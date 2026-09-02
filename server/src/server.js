@@ -13,6 +13,8 @@ const stockRequestRoutes = require('./routes/stockRequestRoutes');
 const StockTransfer = require('./models/StockTransfer');
 const Sale = require('./models/Sale');
 const saleRoutes = require('./routes/saleRoutes');
+const Inventory = require('./models/Inventory');
+const inventoryRoutes = require('./routes/inventoryRoutes');
 
 const app = express();
 
@@ -28,6 +30,7 @@ app.use('/api/products', productRoutes);
 app.use('/api/shipments', shipmentRoutes);
 app.use('/api/stock-requests', stockRequestRoutes);
 app.use('/api/sales', saleRoutes);
+app.use('/api/inventory', inventoryRoutes);
 
 const PORT = process.env.PORT || 5000;
 
@@ -35,6 +38,7 @@ Shipment.belongsTo(Product, { foreignKey: 'product_id' });
 StockRequest.belongsTo(Product, { foreignKey: 'product_id' });
 StockTransfer.belongsTo(StockRequest, { foreignKey: 'request_id' });
 Sale.belongsTo(Product, { foreignKey: 'product_id' });
+Inventory.belongsTo(Product, { foreignKey: 'product_id' });
 
 app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
