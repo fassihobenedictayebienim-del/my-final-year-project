@@ -15,6 +15,7 @@ const Sale = require('./models/Sale');
 const saleRoutes = require('./routes/saleRoutes');
 const Inventory = require('./models/Inventory');
 const inventoryRoutes = require('./routes/inventoryRoutes');
+const reportRoutes = require('./routes/reportRoutes');
 
 const app = express();
 
@@ -31,6 +32,7 @@ app.use('/api/shipments', shipmentRoutes);
 app.use('/api/stock-requests', stockRequestRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/inventory', inventoryRoutes);
+app.use('/api/reports', reportRoutes);
 
 const PORT = process.env.PORT || 5000;
 
