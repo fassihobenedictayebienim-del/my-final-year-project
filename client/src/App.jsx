@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import AdminDashboard from './pages/AdminDashboard';
 import WarehouseDashboard from './pages/WarehouseDashboard';
 import StoreDashboard from './pages/StoreDashboard';
+import ProductManagement from './pages/ProductManagement';
 
 function App() {
   return (
@@ -26,6 +27,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['warehouse_manager']}>
                 <WarehouseDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/warehouse/products"
+            element={
+              <ProtectedRoute allowedRoles={['warehouse_manager', 'administrator']}>
+                <ProductManagement />
               </ProtectedRoute>
             }
           />
