@@ -6,6 +6,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import WarehouseDashboard from './pages/WarehouseDashboard';
 import StoreDashboard from './pages/StoreDashboard';
 import ProductManagement from './pages/ProductManagement';
+import ShipmentPage from './pages/ShipmentPage';
 import StockRequestPage from './pages/StockRequestPage';
 import StockApprovalPage from './pages/StockApprovalPage';
 import SalesRecordingPage from './pages/SalesRecordingPage';
@@ -38,6 +39,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['warehouse_manager', 'administrator']}>
                 <ProductManagement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/warehouse/shipments"
+            element={
+              <ProtectedRoute allowedRoles={['warehouse_manager']}>
+                <ShipmentPage />
               </ProtectedRoute>
             }
           />
