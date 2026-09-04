@@ -9,6 +9,7 @@ export default function StoreDashboard() {
       <p>Welcome, {user.name}.</p>
       <nav style={{ marginBottom: 24 }}>
         <Link to="/store/requests" style={{ marginRight: 16 }}>Stock Requests</Link>
+        <Link to="/store/sales" style={{ marginRight: 16 }}>Record Sale</Link>
       </nav>
       <button onClick={logout}>Logout</button>
     </div>

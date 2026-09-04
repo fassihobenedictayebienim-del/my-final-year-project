@@ -8,6 +8,7 @@ import StoreDashboard from './pages/StoreDashboard';
 import ProductManagement from './pages/ProductManagement';
 import StockRequestPage from './pages/StockRequestPage';
 import StockApprovalPage from './pages/StockApprovalPage';
+import SalesRecordingPage from './pages/SalesRecordingPage';
 
 function App() {
   return (
@@ -61,6 +62,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['store_manager']}>
                 <StockRequestPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/store/sales"
+            element={
+              <ProtectedRoute allowedRoles={['store_manager']}>
+                <SalesRecordingPage />
               </ProtectedRoute>
             }
           />
