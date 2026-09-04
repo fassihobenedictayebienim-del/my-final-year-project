@@ -8,7 +8,7 @@ const Shipment = sequelize.define('Shipment', {
     autoIncrement: true,
   },
   product_id: {
-    type: DataTypes.INTEGER.UNSIGNED,
+    type: DataTypes.STRING(50),
     allowNull: false,
   },
   warehouse_id: {

@@ -12,7 +12,7 @@ const Sale = sequelize.define('Sale', {
     allowNull: false,
   },
   product_id: {
-    type: DataTypes.INTEGER.UNSIGNED,
+    type: DataTypes.STRING(50),
     allowNull: false,
   },
   quantity: {

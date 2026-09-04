@@ -1,15 +1,13 @@
 -- ============================================================
 -- Mike Oppong Agyei Enterprise — Inventory Management System
--- MySQL schema (matches Table 3.1, Chapter Three)
+-- MySQL schema (Product IDs are manually entered by the Warehouse
+-- Manager, matching the printed codes on imported packaging)
 -- ============================================================
 
 CREATE DATABASE IF NOT EXISTS moae_inventory
   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE moae_inventory;
 
--- ------------------------------------------------------------
--- warehouses
--- ------------------------------------------------------------
 CREATE TABLE warehouses (
   warehouse_id  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name          VARCHAR(100) NOT NULL,
@@ -18,9 +16,6 @@ CREATE TABLE warehouses (
   updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
--- ------------------------------------------------------------
--- stores
--- ------------------------------------------------------------
 CREATE TABLE stores (
   store_id      INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name          VARCHAR(100) NOT NULL,
@@ -29,16 +24,11 @@ CREATE TABLE stores (
   updated_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
--- ------------------------------------------------------------
--- users
--- location_id from Table 3.1 is split into nullable warehouse_id /
--- store_id; the Administrator role has both NULL.
--- ------------------------------------------------------------
 CREATE TABLE users (
   user_id       INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name          VARCHAR(100) NOT NULL,
   email         VARCHAR(150) NOT NULL UNIQUE,
-  password      VARCHAR(255) NOT NULL,           -- store bcrypt hash, never plain text
+  password      VARCHAR(255) NOT NULL,
   role          ENUM('administrator', 'warehouse_manager', 'store_manager') NOT NULL,
   warehouse_id  INT UNSIGNED NULL,
   store_id      INT UNSIGNED NULL,
@@ -56,10 +46,12 @@ CREATE TABLE users (
 CREATE INDEX idx_users_role ON users(role);
 
 -- ------------------------------------------------------------
--- products
+-- products — product_id is now supplied by the Warehouse Manager,
+-- matching the code printed on the imported packaging (e.g. "YD77B"),
+-- not database-generated.
 -- ------------------------------------------------------------
 CREATE TABLE products (
-  product_id     INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  product_id     VARCHAR(50) PRIMARY KEY,
   product_name   VARCHAR(150) NOT NULL,
   size           VARCHAR(20),
   color          VARCHAR(50),
@@ -71,14 +63,9 @@ CREATE TABLE products (
 
 CREATE INDEX idx_products_name ON products(product_name);
 
--- ------------------------------------------------------------
--- inventory
--- One row per (product, location). Exactly one of warehouse_id /
--- store_id is set, matching the location split used in `users`.
--- ------------------------------------------------------------
 CREATE TABLE inventory (
   inventory_id  INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  product_id    INT UNSIGNED NOT NULL,
+  product_id    VARCHAR(50) NOT NULL,
   warehouse_id  INT UNSIGNED NULL,
   store_id      INT UNSIGNED NULL,
   quantity      INT NOT NULL DEFAULT 0 CHECK (quantity >= 0),
@@ -90,19 +77,15 @@ CREATE TABLE inventory (
     (warehouse_id IS NOT NULL AND store_id IS NULL) OR
     (warehouse_id IS NULL AND store_id IS NOT NULL)
   ),
-  -- prevents duplicate rows for the same product at the same location
   UNIQUE KEY uq_inventory_product_warehouse (product_id, warehouse_id),
   UNIQUE KEY uq_inventory_product_store (product_id, store_id)
 ) ENGINE=InnoDB;
 
 CREATE INDEX idx_inventory_product ON inventory(product_id);
 
--- ------------------------------------------------------------
--- shipments (goods received at the warehouse from the supplier)
--- ------------------------------------------------------------
 CREATE TABLE shipments (
   shipment_id    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  product_id     INT UNSIGNED NOT NULL,
+  product_id     VARCHAR(50) NOT NULL,
   warehouse_id   INT UNSIGNED NOT NULL,
   quantity       INT UNSIGNED NOT NULL CHECK (quantity > 0),
   date_received  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -114,13 +97,10 @@ CREATE TABLE shipments (
 CREATE INDEX idx_shipments_date ON shipments(date_received);
 CREATE INDEX idx_shipments_product_warehouse ON shipments(product_id, warehouse_id);
 
--- ------------------------------------------------------------
--- stock_requests (a store asking the warehouse for stock)
--- ------------------------------------------------------------
 CREATE TABLE stock_requests (
   request_id    INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   store_id      INT UNSIGNED NOT NULL,
-  product_id    INT UNSIGNED NOT NULL,
+  product_id    VARCHAR(50) NOT NULL,
   quantity      INT UNSIGNED NOT NULL CHECK (quantity > 0),
   status        ENUM('pending', 'approved', 'rejected', 'fulfilled') NOT NULL DEFAULT 'pending',
   request_date  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -131,15 +111,12 @@ CREATE TABLE stock_requests (
 CREATE INDEX idx_requests_status ON stock_requests(status);
 CREATE INDEX idx_requests_store ON stock_requests(store_id);
 
--- ------------------------------------------------------------
--- stock_transfers (the warehouse's approval + dispatch of a request)
--- ------------------------------------------------------------
 CREATE TABLE stock_transfers (
   transfer_id           INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   request_id            INT UNSIGNED NOT NULL,
   warehouse_id          INT UNSIGNED NOT NULL,
   store_id              INT UNSIGNED NOT NULL,
-  approved_by           INT UNSIGNED NOT NULL,       -- FK to users (Warehouse Manager)
+  approved_by           INT UNSIGNED NOT NULL,
   quantity_transferred  INT UNSIGNED NOT NULL CHECK (quantity_transferred > 0),
   status                ENUM('dispatched', 'received') NOT NULL DEFAULT 'dispatched',
   transfer_date         DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -153,13 +130,10 @@ CREATE TABLE stock_transfers (
 CREATE INDEX idx_transfers_status ON stock_transfers(status);
 CREATE INDEX idx_transfers_request ON stock_transfers(request_id);
 
--- ------------------------------------------------------------
--- sales (recorded at a store)
--- ------------------------------------------------------------
 CREATE TABLE sales (
   sale_id      INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   store_id     INT UNSIGNED NOT NULL,
-  product_id   INT UNSIGNED NOT NULL,
+  product_id   VARCHAR(50) NOT NULL,
   quantity     INT UNSIGNED NOT NULL CHECK (quantity > 0),
   total_price  DECIMAL(10,2) NOT NULL CHECK (total_price >= 0),
   sale_date    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -170,9 +144,6 @@ CREATE TABLE sales (
 CREATE INDEX idx_sales_date ON sales(sale_date);
 CREATE INDEX idx_sales_store_product ON sales(store_id, product_id);
 
--- ------------------------------------------------------------
--- Seed data: one warehouse, two stores (matches Chapter One/Three)
--- ------------------------------------------------------------
 INSERT INTO warehouses (name, location) VALUES
   ('Main Warehouse', 'Kantamanto, Accra');
 

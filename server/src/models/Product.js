@@ -3,9 +3,10 @@ const { sequelize } = require('../config/db');
 
 const Product = sequelize.define('Product', {
   product_id: {
-    type: DataTypes.INTEGER.UNSIGNED,
+    type: DataTypes.STRING(50),
     primaryKey: true,
-    autoIncrement: true,
+    // no autoIncrement — the Warehouse Manager supplies this,
+    // matching the code printed on the imported packaging
   },
   product_name: {
     type: DataTypes.STRING(150),

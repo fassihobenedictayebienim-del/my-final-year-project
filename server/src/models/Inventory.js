@@ -8,7 +8,7 @@ const Inventory = sequelize.define('Inventory', {
     autoIncrement: true,
   },
   product_id: {
-    type: DataTypes.INTEGER.UNSIGNED,
+    type: DataTypes.STRING(50),
     allowNull: false,
   },
   warehouse_id: {

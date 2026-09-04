@@ -48,4 +48,21 @@ async function lowStockAlerts(req, res) {
   }
 }
 
-module.exports = { listInventory, lowStockAlerts };
+// GET /api/inventory/warehouse-stock
+// Any logged-in role can view warehouse-level stock (read-only) — a Store
+// Manager needs this to know what's actually available before requesting.
+async function getWarehouseStock(req, res) {
+  try {
+    const { Op } = require('sequelize');
+    const inventory = await Inventory.findAll({
+      where: { warehouse_id: { [Op.ne]: null } },
+      include: [{ model: Product, attributes: ['product_id', 'product_name', 'size', 'color'] }],
+      order: [['product_id', 'ASC']],
+    });
+    res.json({ inventory });
+  } catch (error) {
+    console.error('Warehouse stock error:', error);
+    res.status(500).json({ message: 'Something went wrong while fetching warehouse stock.' });
+  }
+}
+module.exports = { listInventory, lowStockAlerts, getWarehouseStock };

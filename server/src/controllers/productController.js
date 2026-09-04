@@ -1,6 +1,8 @@
 const Product = require('../models/Product');
+const Inventory = require('../models/Inventory');
+const Shipment = require('../models/Shipment');
+const { sequelize } = require('../config/db');
 
-// GET /api/products — any logged-in role can view
 async function listProducts(req, res) {
   try {
     const products = await Product.findAll({ order: [['product_name', 'ASC']] });
@@ -11,7 +13,6 @@ async function listProducts(req, res) {
   }
 }
 
-// GET /api/products/:id
 async function getProduct(req, res) {
   try {
     const product = await Product.findByPk(req.params.id);
@@ -26,33 +27,81 @@ async function getProduct(req, res) {
 }
 
 // POST /api/products — Warehouse Manager or Administrator only
+// If initial_quantity is provided and > 0, this also records a shipment
+// and creates the warehouse inventory row in the same transaction —
+// matching the real workflow where receiving a new product IS the
+// first shipment, not a separate later step.
 async function createProduct(req, res) {
+  const t = await sequelize.transaction();
   try {
-    const { product_name, size, color, unit_price, reorder_level } = req.body;
+    const { product_id, product_name, size, color, unit_price, reorder_level, initial_quantity } = req.body;
 
-    if (!product_name || unit_price === undefined) {
-      return res.status(400).json({ message: 'product_name and unit_price are required.' });
+    if (!product_id || !product_name || unit_price === undefined) {
+      await t.rollback();
+      return res.status(400).json({ message: 'product_id, product_name, and unit_price are required.' });
     }
     if (unit_price < 0) {
+      await t.rollback();
       return res.status(400).json({ message: 'unit_price cannot be negative.' });
     }
 
+    const existing = await Product.findByPk(product_id, { transaction: t });
+    if (existing) {
+      await t.rollback();
+      return res.status(409).json({ message: `A product with ID "${product_id}" already exists.` });
+    }
+
     const product = await Product.create({
+      product_id,
       product_name,
       size,
       color,
       unit_price,
       reorder_level: reorder_level || 0,
-    });
+    }, { transaction: t });
 
-    res.status(201).json({ message: 'Product created successfully.', product });
+    let warehouseQuantity = 0;
+    const qty = Number(initial_quantity) || 0;
+
+    if (qty > 0) {
+      const warehouse_id = req.user.warehouse_id;
+      if (!warehouse_id) {
+        await t.rollback();
+        return res.status(400).json({ message: 'Your account is not linked to a warehouse, cannot record initial stock.' });
+      }
+
+      await Shipment.create({
+        product_id,
+        warehouse_id,
+        quantity: qty,
+        date_received: new Date(),
+      }, { transaction: t });
+
+      const inventoryRow = await Inventory.create({
+        product_id,
+        warehouse_id,
+        quantity: qty,
+      }, { transaction: t });
+
+      warehouseQuantity = inventoryRow.quantity;
+    }
+
+    await t.commit();
+
+    res.status(201).json({
+      message: qty > 0
+        ? `Product created and initial shipment of ${qty} unit(s) recorded.`
+        : 'Product created successfully.',
+      product,
+      warehouse_quantity: warehouseQuantity,
+    });
   } catch (error) {
+    await t.rollback();
     console.error('Create product error:', error);
     res.status(500).json({ message: 'Something went wrong while creating the product.' });
   }
 }
 
-// PUT /api/products/:id — Warehouse Manager or Administrator only
 async function updateProduct(req, res) {
   try {
     const product = await Product.findByPk(req.params.id);
@@ -80,7 +129,6 @@ async function updateProduct(req, res) {
   }
 }
 
-// DELETE /api/products/:id — Warehouse Manager or Administrator only
 async function deleteProduct(req, res) {
   try {
     const product = await Product.findByPk(req.params.id);
@@ -91,10 +139,6 @@ async function deleteProduct(req, res) {
     await product.destroy();
     res.json({ message: 'Product deleted successfully.' });
   } catch (error) {
-    // The database itself blocks deleting a product that already has
-    // shipments, sales, or requests linked to it (ON DELETE RESTRICT
-    // in schema.sql) — this catches that and gives a clear message
-    // instead of a raw database error.
     if (error.name === 'SequelizeForeignKeyConstraintError') {
       return res.status(409).json({
         message: 'This product cannot be deleted because it already has related records (shipments, sales, inventory, or requests).',

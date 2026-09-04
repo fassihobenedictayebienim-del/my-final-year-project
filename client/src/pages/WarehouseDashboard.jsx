@@ -9,6 +9,7 @@ export default function WarehouseDashboard() {
       <p>Welcome, {user.name}.</p>
       <nav style={{ marginBottom: 24 }}>
         <Link to="/warehouse/products" style={{ marginRight: 16 }}>Manage Products</Link>
+        <Link to="/warehouse/requests" style={{ marginRight: 16 }}>Stock Requests</Link>
       </nav>
       <button onClick={logout}>Logout</button>
     </div>
