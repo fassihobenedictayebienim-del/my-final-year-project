@@ -10,6 +10,7 @@ import ShipmentPage from './pages/ShipmentPage';
 import StockRequestPage from './pages/StockRequestPage';
 import StockApprovalPage from './pages/StockApprovalPage';
 import SalesRecordingPage from './pages/SalesRecordingPage';
+import ReportsPage from './pages/ReportsPage';
 
 function App() {
   return (
@@ -79,6 +80,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['store_manager']}>
                 <SalesRecordingPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <ProtectedRoute allowedRoles={['administrator', 'warehouse_manager', 'store_manager']}>
+                <ReportsPage />
               </ProtectedRoute>
             }
           />

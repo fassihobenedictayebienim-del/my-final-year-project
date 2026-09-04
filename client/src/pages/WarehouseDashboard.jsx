@@ -33,6 +33,7 @@ export default function WarehouseDashboard() {
         <Link to="/warehouse/products" style={{ marginRight: 16 }}>Manage Products</Link>
         <Link to="/warehouse/shipments" style={{ marginRight: 16 }}>Record Shipment</Link>
         <Link to="/warehouse/requests" style={{ marginRight: 16 }}>Stock Requests</Link>
+        <Link to="/reports">Reports</Link>
       </nav>
 
       {error && <p style={{ color: 'red' }}>{error}</p>}

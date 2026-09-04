@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 
@@ -27,6 +28,10 @@ export default function AdminDashboard() {
         <button onClick={logout}>Logout</button>
       </div>
       <p>Welcome, {user.name}.</p>
+
+      <nav style={{ marginBottom: 24 }}>
+        <Link to="/reports">Reports</Link>
+      </nav>
 
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
