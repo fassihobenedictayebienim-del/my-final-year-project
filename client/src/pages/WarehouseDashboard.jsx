@@ -30,11 +30,12 @@ export default function WarehouseDashboard() {
       <p>Welcome, {user.name}.</p>
 
       <nav style={{ marginBottom: 24 }}>
-        <Link to="/warehouse/products" style={{ marginRight: 16 }}>Manage Products</Link>
-        <Link to="/warehouse/shipments" style={{ marginRight: 16 }}>Record Shipment</Link>
-        <Link to="/warehouse/requests" style={{ marginRight: 16 }}>Stock Requests</Link>
-        <Link to="/reports">Reports</Link>
-      </nav>
+  <Link to="/warehouse/products" style={{ marginRight: 16 }}>Manage Products</Link>
+  <Link to="/warehouse/shipments" style={{ marginRight: 16 }}>Record Shipment</Link>
+  <Link to="/warehouse/requests" style={{ marginRight: 16 }}>Stock Requests</Link>
+  <Link to="/reports" style={{ marginRight: 16 }}>Reports</Link>
+  <Link to="/settings">My Settings</Link>
+</nav>
 
       {error && <p style={{ color: 'red' }}>{error}</p>}
 

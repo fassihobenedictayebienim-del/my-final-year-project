@@ -30,8 +30,11 @@ export default function AdminDashboard() {
       <p>Welcome, {user.name}.</p>
 
       <nav style={{ marginBottom: 24 }}>
-        <Link to="/reports">Reports</Link>
-      </nav>
+  <Link to="/admin/users" style={{ marginRight: 16 }}>User Management</Link>
+  <Link to="/admin/settings" style={{ marginRight: 16 }}>System Settings</Link>
+  <Link to="/reports" style={{ marginRight: 16 }}>Reports</Link>
+  <Link to="/settings">My Settings</Link>
+</nav>
 
       {error && <p style={{ color: 'red' }}>{error}</p>}
 

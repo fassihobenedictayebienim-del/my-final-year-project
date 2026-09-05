@@ -30,10 +30,11 @@ export default function StoreDashboard() {
       <p>Welcome, {user.name}.</p>
 
       <nav style={{ marginBottom: 24 }}>
-        <Link to="/store/requests" style={{ marginRight: 16 }}>Stock Requests</Link>
-        <Link to="/store/sales" style={{ marginRight: 16 }}>Record Sale</Link>
-        <Link to="/reports">Reports</Link>
-      </nav>
+  <Link to="/store/requests" style={{ marginRight: 16 }}>Stock Requests</Link>
+  <Link to="/store/sales" style={{ marginRight: 16 }}>Record Sale</Link>
+  <Link to="/reports" style={{ marginRight: 16 }}>Reports</Link>
+  <Link to="/settings">My Settings</Link>
+</nav>
 
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
