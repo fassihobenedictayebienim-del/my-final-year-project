@@ -1,241 +1,228 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import Layout from '../components/Layout';
+import { useToast } from '../context/ToastContext';
 import api from '../services/api';
 
 export default function ProductManagement() {
+  const { showToast } = useToast();
   const [products, setProducts] = useState([]);
-  const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({
-    product_id: '', product_name: '', size: '', color: '', unit_price: '', reorder_level: '', initial_quantity: '',
-  });
+  const [productData, setProductData] = useState({ product_id: '', product_name: '', unit_price: '', reorder_level: '' });
+  const [variantRows, setVariantRows] = useState([{ color: '', size: '', quantity: '' }]);
 
-  const [editingId, setEditingId] = useState(null);
-  const [editData, setEditData] = useState({});
+  const [expandedProduct, setExpandedProduct] = useState(null);
+  const [variantDetail, setVariantDetail] = useState({});
+  const [newVariant, setNewVariant] = useState({ color: '', size: '' });
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchProducts(); }, []);
 
-  async function fetchData() {
+  async function fetchProducts() {
     setLoading(true);
     try {
-      const [productsRes, inventoryRes] = await Promise.all([
-        api.get('/products'),
-        api.get('/inventory'),
-      ]);
-      setProducts(productsRes.data.products);
-      setInventory(inventoryRes.data.inventory);
+      const response = await api.get('/products');
+      setProducts(response.data.products);
     } catch (err) {
-      setError('Failed to load products.');
+      showToast('Failed to load products.', 'error');
     } finally {
       setLoading(false);
     }
   }
 
-  function getQuantity(product_id) {
-    const row = inventory.find((i) => i.product_id === product_id);
-    return row ? row.quantity : 0;
+  function addVariantRow() {
+    setVariantRows([...variantRows, { color: '', size: '', quantity: '' }]);
+  }
+  function removeVariantRow(index) {
+    setVariantRows(variantRows.filter((_, i) => i !== index));
+  }
+  function updateVariantRow(index, field, value) {
+    const updated = [...variantRows];
+    updated[index][field] = value;
+    setVariantRows(updated);
   }
 
-  async function handleAddProduct(e) {
+  const totalFromVariants = variantRows.reduce((sum, v) => sum + (Number(v.quantity) || 0), 0);
+
+  async function handleCreateProduct(e) {
     e.preventDefault();
-    setError('');
-    setSuccess('');
+    const cleanVariants = variantRows.filter((v) => v.color.trim() && v.size.trim());
+    if (cleanVariants.length === 0) {
+      showToast('Add at least one variant with a colour and size.', 'error');
+      return;
+    }
     try {
-      const response = await api.post('/products', formData);
-      setSuccess(response.data.message);
-      setFormData({ product_id: '', product_name: '', size: '', color: '', unit_price: '', reorder_level: '', initial_quantity: '' });
+      const response = await api.post('/products', { ...productData, variants: cleanVariants });
+      showToast(response.data.message);
+      setProductData({ product_id: '', product_name: '', unit_price: '', reorder_level: '' });
+      setVariantRows([{ color: '', size: '', quantity: '' }]);
       setShowForm(false);
-      fetchData();
+      fetchProducts();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to add product.');
+      showToast(err.response?.data?.message || 'Failed to create product.', 'error');
     }
   }
 
-  function startEdit(product) {
-    setEditingId(product.product_id);
-    setEditData({
-      product_name: product.product_name,
-      size: product.size || '',
-      color: product.color || '',
-      unit_price: product.unit_price,
-      reorder_level: product.reorder_level,
-    });
+  async function toggleExpand(product_id) {
+    if (expandedProduct === product_id) {
+      setExpandedProduct(null);
+      return;
+    }
+    setExpandedProduct(product_id);
+    if (!variantDetail[product_id]) {
+      try {
+        const response = await api.get(`/products/${product_id}/variants`);
+        setVariantDetail((prev) => ({ ...prev, [product_id]: response.data.variants }));
+      } catch (err) {
+        showToast('Failed to load variants.', 'error');
+      }
+    }
   }
 
-  async function handleSaveEdit(product_id) {
+  async function handleAddVariant(product_id) {
+    if (!newVariant.color.trim() || !newVariant.size.trim()) {
+      showToast('Enter both a colour and a size.', 'error');
+      return;
+    }
     try {
-      await api.put(`/products/${product_id}`, editData);
-      setEditingId(null);
-      fetchData();
+      await api.post(`/products/${product_id}/variants`, newVariant);
+      showToast('Variant added successfully.');
+      setNewVariant({ color: '', size: '' });
+      const response = await api.get(`/products/${product_id}/variants`);
+      setVariantDetail((prev) => ({ ...prev, [product_id]: response.data.variants }));
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to update product.');
+      showToast(err.response?.data?.message || 'Failed to add variant.', 'error');
     }
   }
 
-  async function handleDelete(product_id) {
-    if (!window.confirm('Delete this product? This cannot be undone.')) return;
+  async function handleDeleteVariant(product_id, variant_id) {
+    if (!window.confirm('Delete this variant? This cannot be undone.')) return;
+    try {
+      await api.delete(`/products/variants/${variant_id}`);
+      showToast('Variant deleted successfully.');
+      const response = await api.get(`/products/${product_id}/variants`);
+      setVariantDetail((prev) => ({ ...prev, [product_id]: response.data.variants }));
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to delete variant.', 'error');
+    }
+  }
+
+  async function handleDeleteProduct(product_id) {
+    if (!window.confirm('Delete this product and all its variants? This cannot be undone.')) return;
     try {
       await api.delete(`/products/${product_id}`);
-      fetchData();
+      showToast('Product deleted successfully.');
+      fetchProducts();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to delete product.');
+      showToast(err.response?.data?.message || 'Failed to delete product.', 'error');
     }
+  }
+
+  function variantBadge(qty) {
+    if (qty === 0) return <span className="stock-badge out-of-stock">🔴 Out</span>;
+    if (qty <= 5) return <span className="stock-badge low-stock">🟠 Low</span>;
+    return <span className="stock-badge in-stock">🟢 OK</span>;
   }
 
   return (
-    <div style={{ padding: 40, fontFamily: 'sans-serif', maxWidth: 950, margin: '0 auto' }}>
-      <Link to="/warehouse">&larr; Back to Dashboard</Link>
-      <h1>Product Management</h1>
-
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      {success && <p style={{ color: 'green' }}>{success}</p>}
-
-      <button onClick={() => setShowForm(!showForm)} style={{ marginBottom: 16, padding: '8px 16px' }}>
-        {showForm ? 'Cancel' : '+ Add New Product'}
-      </button>
+    <Layout>
+      <div className="page-header">
+        <div>
+          <h1>Product Management</h1>
+          <p>Manage products and their colour/size variants.</p>
+        </div>
+        <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
+          {showForm ? 'Cancel' : '+ Add New Product'}
+        </button>
+      </div>
 
       {showForm && (
-        <form onSubmit={handleAddProduct} style={{ marginBottom: 24, padding: 16, border: '1px solid #ccc', borderRadius: 4 }}>
-          <div style={{ marginBottom: 8 }}>
-            <input
-              placeholder="Product ID (printed on packaging, e.g. YD77B)"
-              value={formData.product_id}
-              onChange={(e) => setFormData({ ...formData, product_id: e.target.value })}
-              required
-              style={{ padding: 6, marginRight: 8, width: 240 }}
-            />
-            <input
-              placeholder="Product name"
-              value={formData.product_name}
-              onChange={(e) => setFormData({ ...formData, product_name: e.target.value })}
-              required
-              style={{ padding: 6, marginRight: 8 }}
-            />
+        <form onSubmit={handleCreateProduct} className="form-card">
+          <div className="form-row">
+            <input className="form-input" placeholder="Product ID (e.g. P1021)" value={productData.product_id} onChange={(e) => setProductData({ ...productData, product_id: e.target.value })} required style={{ width: 200 }} />
+            <input className="form-input" placeholder="Product name" value={productData.product_name} onChange={(e) => setProductData({ ...productData, product_name: e.target.value })} required style={{ flex: 1 }} />
           </div>
-          <div style={{ marginBottom: 8 }}>
-            <input
-              placeholder="Size (e.g. 37-42)"
-              value={formData.size}
-              onChange={(e) => setFormData({ ...formData, size: e.target.value })}
-              style={{ padding: 6, marginRight: 8 }}
-            />
-            <input
-              placeholder="Color"
-              value={formData.color}
-              onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-              style={{ padding: 6, marginRight: 8 }}
-            />
+          <div className="form-row">
+            <input className="form-input" type="number" step="0.01" placeholder="Unit price (GHS)" value={productData.unit_price} onChange={(e) => setProductData({ ...productData, unit_price: e.target.value })} required />
+            <input className="form-input" type="number" placeholder="Warehouse reorder level" value={productData.reorder_level} onChange={(e) => setProductData({ ...productData, reorder_level: e.target.value })} />
           </div>
-          <div style={{ marginBottom: 8 }}>
-            <input
-              type="number"
-              step="0.01"
-              placeholder="Unit price (GHS)"
-              value={formData.unit_price}
-              onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
-              required
-              style={{ padding: 6, marginRight: 8 }}
-            />
-            <input
-              type="number"
-              placeholder="Reorder level"
-              value={formData.reorder_level}
-              onChange={(e) => setFormData({ ...formData, reorder_level: e.target.value })}
-              style={{ padding: 6, marginRight: 8 }}
-            />
-          </div>
-          <div style={{ marginBottom: 8 }}>
-            <input
-              type="number"
-              placeholder="Quantity received now (optional)"
-              value={formData.initial_quantity}
-              onChange={(e) => setFormData({ ...formData, initial_quantity: e.target.value })}
-              style={{ padding: 6, marginRight: 8, width: 220 }}
-            />
-          </div>
-          <p style={{ color: '#666', fontSize: 13 }}>
-            If you're registering this product because a shipment just arrived, enter the quantity received above —
-            this will be recorded as the product's first shipment. Leave blank to register the product with 0 stock
-            (e.g. if you're setting it up ahead of the actual delivery).
-          </p>
-          <button type="submit" style={{ padding: '6px 16px' }}>Save Product</button>
+
+          <p className="form-hint" style={{ marginTop: 16 }}><strong>Variants received</strong> — add one row per colour/size combination physically counted from this shipment.</p>
+
+          {variantRows.map((row, i) => (
+            <div className="form-row" key={i}>
+              <input className="form-input" placeholder="Colour" value={row.color} onChange={(e) => updateVariantRow(i, 'color', e.target.value)} style={{ width: 140 }} />
+              <input className="form-input" placeholder="Size" value={row.size} onChange={(e) => updateVariantRow(i, 'size', e.target.value)} style={{ width: 100 }} />
+              <input className="form-input" type="number" placeholder="Quantity" value={row.quantity} onChange={(e) => updateVariantRow(i, 'quantity', e.target.value)} style={{ width: 120 }} />
+              {variantRows.length > 1 && (
+                <button type="button" className="btn btn-sm btn-danger" onClick={() => removeVariantRow(i)}>Remove</button>
+              )}
+            </div>
+          ))}
+          <button type="button" className="btn btn-sm" onClick={addVariantRow} style={{ marginBottom: 12 }}>+ Add Variant Row</button>
+
+          <p style={{ fontWeight: 700, margin: '4px 0 14px' }}>Total pairs from variants: {totalFromVariants}</p>
+
+          <button type="submit" className="btn btn-primary">Save Product</button>
         </form>
       )}
 
-      {loading ? (
-        <p>Loading products...</p>
-      ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #333', textAlign: 'left' }}>
-              <th style={{ padding: 8 }}>Product ID</th>
-              <th style={{ padding: 8 }}>Name</th>
-              <th style={{ padding: 8 }}>Size</th>
-              <th style={{ padding: 8 }}>Color</th>
-              <th style={{ padding: 8 }}>Unit Price</th>
-              <th style={{ padding: 8 }}>Warehouse Qty</th>
-              <th style={{ padding: 8 }}>Reorder Level</th>
-              <th style={{ padding: 8 }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((p) => {
-              const qty = getQuantity(p.product_id);
-              const isLow = qty <= p.reorder_level;
-              return (
-                <tr key={p.product_id} style={{ borderBottom: '1px solid #ddd' }}>
-                  <td style={{ padding: 8, fontFamily: 'monospace' }}>{p.product_id}</td>
-                  {editingId === p.product_id ? (
-                    <>
-                      <td style={{ padding: 8 }}>
-                        <input value={editData.product_name} onChange={(e) => setEditData({ ...editData, product_name: e.target.value })} style={{ width: 100 }} />
+      {loading ? <p>Loading products...</p> : (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead><tr><th>Product ID</th><th>Name</th><th>Unit Price</th><th>Actions</th></tr></thead>
+            <tbody>
+              {products.map((p) => (
+                <>
+                  <tr key={p.product_id}>
+                    <td className="mono">{p.product_id}</td>
+                    <td>{p.product_name}</td>
+                    <td>GHS {Number(p.unit_price).toFixed(2)}</td>
+                    <td>
+                      <div className="action-buttons">
+                        <button className="btn btn-sm" onClick={() => toggleExpand(p.product_id)}>
+                          {expandedProduct === p.product_id ? 'Hide Variants' : 'View Variants'}
+                        </button>
+                        <button className="btn btn-sm btn-danger" onClick={() => handleDeleteProduct(p.product_id)}>Delete</button>
+                      </div>
+                    </td>
+                  </tr>
+                  {expandedProduct === p.product_id && (
+                    <tr>
+                      <td colSpan={4} style={{ background: 'var(--color-bg)', padding: 16 }}>
+                        {!variantDetail[p.product_id] ? <p>Loading variants...</p> : (
+                          <>
+                            <table className="data-table" style={{ marginBottom: 12 }}>
+                              <thead><tr><th>Colour</th><th>Size</th><th>Quantity (your location)</th><th>Status</th><th>Actions</th></tr></thead>
+                              <tbody>
+                                {variantDetail[p.product_id].map((v) => (
+                                  <tr key={v.variant_id}>
+                                    <td>{v.color}</td>
+                                    <td>{v.size}</td>
+                                    <td>{v.quantity}</td>
+                                    <td>{variantBadge(v.quantity)}</td>
+                                    <td><button className="btn btn-sm btn-danger" onClick={() => handleDeleteVariant(p.product_id, v.variant_id)}>Delete</button></td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                            <div className="form-row" style={{ alignItems: 'center' }}>
+                              <input className="form-input" placeholder="New colour" value={newVariant.color} onChange={(e) => setNewVariant({ ...newVariant, color: e.target.value })} style={{ width: 140 }} />
+                              <input className="form-input" placeholder="New size" value={newVariant.size} onChange={(e) => setNewVariant({ ...newVariant, size: e.target.value })} style={{ width: 100 }} />
+                              <button className="btn btn-sm btn-primary" onClick={() => handleAddVariant(p.product_id)}>+ Add Variant</button>
+                            </div>
+                            <p className="form-hint">New variants start at 0 — use Record Shipment to bring in stock for them.</p>
+                          </>
+                        )}
                       </td>
-                      <td style={{ padding: 8 }}>
-                        <input value={editData.size} onChange={(e) => setEditData({ ...editData, size: e.target.value })} style={{ width: 60 }} />
-                      </td>
-                      <td style={{ padding: 8 }}>
-                        <input value={editData.color} onChange={(e) => setEditData({ ...editData, color: e.target.value })} style={{ width: 60 }} />
-                      </td>
-                      <td style={{ padding: 8 }}>
-                        <input type="number" step="0.01" value={editData.unit_price} onChange={(e) => setEditData({ ...editData, unit_price: e.target.value })} style={{ width: 70 }} />
-                      </td>
-                      <td style={{ padding: 8 }}>{qty}</td>
-                      <td style={{ padding: 8 }}>
-                        <input type="number" value={editData.reorder_level} onChange={(e) => setEditData({ ...editData, reorder_level: e.target.value })} style={{ width: 60 }} />
-                      </td>
-                      <td style={{ padding: 8 }}>
-                        <button onClick={() => handleSaveEdit(p.product_id)} style={{ marginRight: 4 }}>Save</button>
-                        <button onClick={() => setEditingId(null)}>Cancel</button>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td style={{ padding: 8 }}>{p.product_name}</td>
-                      <td style={{ padding: 8 }}>{p.size}</td>
-                      <td style={{ padding: 8 }}>{p.color}</td>
-                      <td style={{ padding: 8 }}>GHS {Number(p.unit_price).toFixed(2)}</td>
-                      <td style={{ padding: 8, color: isLow ? 'red' : 'inherit', fontWeight: isLow ? 'bold' : 'normal' }}>
-                        {qty} {isLow && '⚠️'}
-                      </td>
-                      <td style={{ padding: 8 }}>{p.reorder_level}</td>
-                      <td style={{ padding: 8 }}>
-                        <button onClick={() => startEdit(p)} style={{ marginRight: 4 }}>Edit</button>
-                        <button onClick={() => handleDelete(p.product_id)}>Delete</button>
-                      </td>
-                    </>
+                    </tr>
                   )}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                </>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </div>
+    </Layout>
   );
 }

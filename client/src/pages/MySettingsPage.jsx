@@ -1,29 +1,43 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import Layout from '../components/Layout';
+import { useToast } from '../context/ToastContext';
 import api from '../services/api';
 
 export default function MySettingsPage() {
-  const { user } = useAuth();
-  const backLink = user.role === 'store_manager' ? '/store' : user.role === 'warehouse_manager' ? '/warehouse' : '/admin';
+  const { user: authUser } = useAuth();
+  const { showToast } = useToast();
+  const isAdmin = authUser.role === 'administrator';
 
   const [profile, setProfile] = useState(null);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
-
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
+  // Admin-only state
+  const [locations, setLocations] = useState({ warehouses: [], stores: [] });
+  const [users, setUsers] = useState([]);
+  const [loadingAdmin, setLoadingAdmin] = useState(isAdmin);
+  const [editingLocation, setEditingLocation] = useState(null);
+  const [locationEditData, setLocationEditData] = useState({});
+  const [resettingUserId, setResettingUserId] = useState(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState('');
+
   useEffect(() => {
-    fetchProfile();
+    api.get('/auth/me').then((res) => setProfile(res.data.user)).catch(() => showToast('Failed to load profile.', 'error'));
+    if (isAdmin) fetchAdminData();
   }, []);
 
-  async function fetchProfile() {
+  async function fetchAdminData() {
+    setLoadingAdmin(true);
     try {
-      const response = await api.get('/auth/me');
-      setProfile(response.data.user);
+      const [locRes, usersRes] = await Promise.all([api.get('/locations'), api.get('/users')]);
+      setLocations(locRes.data);
+      setUsers(usersRes.data.users);
     } catch (err) {
-      setError('Failed to load profile.');
+      showToast('Failed to load system settings.', 'error');
+    } finally {
+      setLoadingAdmin(false);
     }
   }
 
@@ -36,79 +50,151 @@ export default function MySettingsPage() {
 
   async function handleChangePassword(e) {
     e.preventDefault();
-    setError('');
-    setSuccess('');
-
     if (newPassword !== confirmPassword) {
-      setError('New password and confirmation do not match.');
+      showToast('New password and confirmation do not match.', 'error');
       return;
     }
-
     try {
       await api.put('/auth/change-password', { currentPassword, newPassword });
-      setSuccess('Password changed successfully.');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
+      showToast('Password changed successfully.');
+      setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to change password.');
+      showToast(err.response?.data?.message || 'Failed to change password.', 'error');
     }
   }
 
-  return (
-    <div style={{ padding: 40, fontFamily: 'sans-serif', maxWidth: 600, margin: '0 auto' }}>
-      <a href={backLink}>&larr; Back to Dashboard</a>
-      <h1>My Settings</h1>
+  function startEditLocation(type, loc) {
+    setEditingLocation(`${type}-${type === 'warehouse' ? loc.warehouse_id : loc.store_id}`);
+    setLocationEditData({ name: loc.name, location: loc.location });
+  }
 
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      {success && <p style={{ color: 'green' }}>{success}</p>}
+  async function saveLocation(type, id) {
+    try {
+      await api.put(`/locations/${type}s/${id}`, locationEditData);
+      showToast('Location updated successfully.');
+      setEditingLocation(null);
+      fetchAdminData();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update location.', 'error');
+    }
+  }
+
+  async function handleResetUserPassword(user_id) {
+    if (!resetPasswordValue || resetPasswordValue.length < 8) {
+      showToast('New password must be at least 8 characters.', 'error');
+      return;
+    }
+    try {
+      const response = await api.put(`/users/${user_id}/reset-password`, { newPassword: resetPasswordValue });
+      showToast(response.data.message);
+      setResettingUserId(null);
+      setResetPasswordValue('');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to reset password.', 'error');
+    }
+  }
+
+  function locationRow(type, loc, key) {
+    const id = type === 'warehouse' ? loc.warehouse_id : loc.store_id;
+    return (
+      <tr key={key}>
+        {editingLocation === key ? (
+          <>
+            <td><input className="form-input" value={locationEditData.name} onChange={(e) => setLocationEditData({ ...locationEditData, name: e.target.value })} /></td>
+            <td><input className="form-input" value={locationEditData.location} onChange={(e) => setLocationEditData({ ...locationEditData, location: e.target.value })} /></td>
+            <td>
+              <div className="action-buttons">
+                <button className="btn btn-sm btn-success" onClick={() => saveLocation(type, id)}>Save</button>
+                <button className="btn btn-sm" onClick={() => setEditingLocation(null)}>Cancel</button>
+              </div>
+            </td>
+          </>
+        ) : (
+          <>
+            <td>{loc.name}</td>
+            <td>{loc.location}</td>
+            <td><button className="btn btn-sm" onClick={() => startEditLocation(type, loc)}>Edit</button></td>
+          </>
+        )}
+      </tr>
+    );
+  }
+
+  return (
+    <Layout>
+      <div className="page-header">
+        <div>
+          <h1>{isAdmin ? 'Settings' : 'My Settings'}</h1>
+          <p>{isAdmin ? 'Your profile, plus system-wide locations and user management.' : 'View your profile and change your password.'}</p>
+        </div>
+      </div>
 
       {profile && (
-        <div style={{ padding: 16, border: '1px solid #ccc', borderRadius: 4, marginBottom: 24 }}>
+        <div className="card" style={{ marginBottom: 24 }}>
           <p><strong>Name:</strong> {profile.name}</p>
           <p><strong>Email:</strong> {profile.email}</p>
-          <p><strong>Role:</strong> {roleLabel(profile.role)}</p>
-          <p style={{ color: '#666', fontSize: 13 }}>
-            To change your name or email, contact your Administrator.
-          </p>
+          <p style={{ marginBottom: 0 }}><strong>Role:</strong> {roleLabel(profile.role)}</p>
+          <p className="form-hint" style={{ marginTop: 8 }}>To change your name or email, contact your Administrator.</p>
         </div>
       )}
 
       <h3>Change Password</h3>
-      <form onSubmit={handleChangePassword} style={{ padding: 16, border: '1px solid #ccc', borderRadius: 4 }}>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            type="password"
-            placeholder="Current password"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            required
-            style={{ padding: 6, width: '100%' }}
-          />
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            type="password"
-            placeholder="New password (min 8 characters)"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            required
-            minLength={8}
-            style={{ padding: 6, width: '100%' }}
-          />
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          <input
-            type="password"
-            placeholder="Confirm new password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-            style={{ padding: 6, width: '100%' }}
-          />
-        </div>
-        <button type="submit" style={{ padding: '8px 16px' }}>Change Password</button>
+      <form onSubmit={handleChangePassword} className="form-card" style={{ maxWidth: 400 }}>
+        <div className="form-row"><input className="form-input" type="password" placeholder="Current password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required style={{ width: '100%' }} /></div>
+        <div className="form-row"><input className="form-input" type="password" placeholder="New password (min 8 characters)" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} style={{ width: '100%' }} /></div>
+        <div className="form-row"><input className="form-input" type="password" placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required style={{ width: '100%' }} /></div>
+        <button type="submit" className="btn btn-primary">Change Password</button>
       </form>
-    </div>
+
+      {isAdmin && (
+        <>
+          {loadingAdmin ? <p>Loading system settings...</p> : (
+            <>
+              <h3>Warehouse</h3>
+              <div className="table-wrap" style={{ marginBottom: 24 }}>
+                <table className="data-table">
+                  <thead><tr><th>Name</th><th>Location</th><th>Actions</th></tr></thead>
+                  <tbody>{locations.warehouses.map((w) => locationRow('warehouse', w, `warehouse-${w.warehouse_id}`))}</tbody>
+                </table>
+              </div>
+
+              <h3>Stores</h3>
+              <div className="table-wrap" style={{ marginBottom: 24 }}>
+                <table className="data-table">
+                  <thead><tr><th>Name</th><th>Location</th><th>Actions</th></tr></thead>
+                  <tbody>{locations.stores.map((s) => locationRow('store', s, `store-${s.store_id}`))}</tbody>
+                </table>
+              </div>
+
+              <h3>Reset a User's Password</h3>
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead><tr><th>Name</th><th>Role</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {users.filter((u) => u.user_id !== authUser.user_id).map((u) => (
+                      <tr key={u.user_id}>
+                        <td>{u.name}</td>
+                        <td>{roleLabel(u.role)}</td>
+                        <td>
+                          {resettingUserId === u.user_id ? (
+                            <div className="action-buttons">
+                              <input className="form-input" type="password" placeholder="New password (min 8 chars)" value={resetPasswordValue} onChange={(e) => setResetPasswordValue(e.target.value)} style={{ width: 200 }} />
+                              <button className="btn btn-sm btn-success" onClick={() => handleResetUserPassword(u.user_id)}>Confirm</button>
+                              <button className="btn btn-sm" onClick={() => { setResettingUserId(null); setResetPasswordValue(''); }}>Cancel</button>
+                            </div>
+                          ) : (
+                            <button className="btn btn-sm" onClick={() => setResettingUserId(u.user_id)}>Reset Password</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </Layout>
   );
 }

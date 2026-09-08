@@ -12,8 +12,8 @@ import StockApprovalPage from './pages/StockApprovalPage';
 import SalesRecordingPage from './pages/SalesRecordingPage';
 import ReportsPage from './pages/ReportsPage';
 import UserManagementPage from './pages/UserManagementPage';
-import AdminSettingsPage from './pages/AdminSettingsPage';
 import MySettingsPage from './pages/MySettingsPage';
+import ActivityLogPage from './pages/ActivityLogPage';
 
 function App() {
   return (
@@ -24,7 +24,6 @@ function App() {
 
           <Route path="/admin" element={<ProtectedRoute allowedRoles={['administrator']}><AdminDashboard /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute allowedRoles={['administrator']}><UserManagementPage /></ProtectedRoute>} />
-          <Route path="/admin/settings" element={<ProtectedRoute allowedRoles={['administrator']}><AdminSettingsPage /></ProtectedRoute>} />
 
           <Route path="/warehouse" element={<ProtectedRoute allowedRoles={['warehouse_manager']}><WarehouseDashboard /></ProtectedRoute>} />
           <Route path="/warehouse/products" element={<ProtectedRoute allowedRoles={['warehouse_manager', 'administrator']}><ProductManagement /></ProtectedRoute>} />
@@ -39,6 +38,7 @@ function App() {
           <Route path="/settings" element={<ProtectedRoute allowedRoles={['administrator', 'warehouse_manager', 'store_manager']}><MySettingsPage /></ProtectedRoute>} />
 
           <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="/admin/activity" element={<ProtectedRoute allowedRoles={['administrator']}><ActivityLogPage /></ProtectedRoute>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import Layout from '../components/Layout';
 import api from '../services/api';
 
 export default function ReportsPage() {
   const { user } = useAuth();
-  const backLink = user.role === 'store_manager' ? '/store' : user.role === 'warehouse_manager' ? '/warehouse' : '/admin';
-
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [salesData, setSalesData] = useState(null);
@@ -43,118 +41,126 @@ export default function ReportsPage() {
     }
   }
 
-  function handleFilter(e) {
-    e.preventDefault();
-    fetchSalesReport(startDate, endDate);
+  function handleFilter(e) { e.preventDefault(); fetchSalesReport(startDate, endDate); }
+  function clearFilter() { setStartDate(''); setEndDate(''); fetchSalesReport(); }
+
+  // Group the flat breakdown into sections by location, so "All Locations"
+  // reads as Warehouse / Store 1 / Store 2 instead of an interleaved list.
+  function groupByLocation(breakdown) {
+    const groups = {};
+    for (const row of breakdown) {
+      const key = row.warehouse_id ? `Warehouse ${row.warehouse_id}` : `Store ${row.store_id}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(row);
+    }
+    // Sort so Warehouse comes first, then Store 1, Store 2, ...
+    return Object.entries(groups).sort(([a], [b]) => {
+      if (a.startsWith('Warehouse')) return -1;
+      if (b.startsWith('Warehouse')) return 1;
+      return a.localeCompare(b);
+    });
   }
 
-  function clearFilter() {
-    setStartDate('');
-    setEndDate('');
-    fetchSalesReport();
-  }
+  const groupedInventory = inventoryData ? groupByLocation(inventoryData.breakdown) : [];
 
   return (
-    <div style={{ padding: 40, fontFamily: 'sans-serif', maxWidth: 950, margin: '0 auto' }}>
-      <Link to={backLink}>&larr; Back to Dashboard</Link>
-      <h1>Reports</h1>
+    <Layout>
+      <div className="page-header">
+        <div>
+          <h1>Reports</h1>
+          <p>Sales history and inventory value.</p>
+        </div>
+      </div>
 
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {error && <div className="alert alert-error">{error}</div>}
 
       {inventoryData && (
-        <div style={{ marginBottom: 32 }}>
+        <div style={{ marginBottom: 28 }}>
           <h3>Inventory Value {user.role === 'store_manager' ? '(Your Store)' : user.role === 'warehouse_manager' ? '(Warehouse)' : '(All Locations)'}</h3>
-          <div style={{ padding: 16, border: '1px solid #ccc', borderRadius: 4, marginBottom: 12 }}>
-            <p style={{ fontSize: 24, fontWeight: 'bold', margin: 0 }}>GHS {Number(inventoryData.total_value).toFixed(2)}</p>
+          <div className="card" style={{ marginBottom: 16 }}>
+            <p className="stat-label">Grand Total</p>
+            <p className="stat-value" style={{ margin: '4px 0 0' }}>GHS {Number(inventoryData.total_value).toFixed(2)}</p>
           </div>
-          {inventoryData.breakdown.length > 0 && (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #333', textAlign: 'left' }}>
-                  <th style={{ padding: 6 }}>Product</th>
-                  <th style={{ padding: 6 }}>Location</th>
-                  <th style={{ padding: 6 }}>Qty</th>
-                  <th style={{ padding: 6 }}>Unit Price</th>
-                  <th style={{ padding: 6 }}>Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inventoryData.breakdown.map((row, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #ddd' }}>
-                    <td style={{ padding: 6 }}>{row.product_name}</td>
-                    <td style={{ padding: 6 }}>{row.warehouse_id ? 'Warehouse' : `Store ${row.store_id}`}</td>
-                    <td style={{ padding: 6 }}>{row.quantity}</td>
-                    <td style={{ padding: 6 }}>GHS {Number(row.unit_price).toFixed(2)}</td>
-                    <td style={{ padding: 6 }}>GHS {Number(row.value).toFixed(2)}</td>
+
+          {groupedInventory.map(([locationName, rows]) => {
+            const subtotal = rows.reduce((sum, r) => sum + Number(r.value), 0);
+            return (
+              <div key={locationName} style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 8 }}>
+                  <h4 style={{ margin: 0, fontSize: 14, fontWeight: 700 }}>{locationName}</h4>
+                  <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+                    Subtotal: <strong style={{ color: 'var(--color-text)' }}>GHS {subtotal.toFixed(2)}</strong>
+                  </span>
+                </div>
+                <div className="table-wrap">
+                  <table className="data-table">
+                    <thead><tr><th>Product</th><th>Colour</th><th>Size</th><th>Qty</th><th>Unit Price</th><th>Value</th></tr></thead>
+                    <tbody>
+                     {rows.map((row, i) => (
+                  <tr key={i}>
+                    <td>{row.product_name}</td>
+                    <td>{row.color}</td>
+                    <td>{row.size}</td>
+                    <td>{row.quantity}</td>
+                    <td>GHS {Number(row.unit_price).toFixed(2)}</td>
+                    <td>GHS {Number(row.value).toFixed(2)}</td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+              ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
       <h3>Sales Report</h3>
-      <form onSubmit={handleFilter} style={{ marginBottom: 16, display: 'flex', gap: 8, alignItems: 'center' }}>
-        <label>
-          From:{' '}
-          <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} style={{ padding: 6 }} />
-        </label>
-        <label>
-          To:{' '}
-          <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} style={{ padding: 6 }} />
-        </label>
-        <button type="submit" style={{ padding: '6px 16px' }}>Filter</button>
-        <button type="button" onClick={clearFilter} style={{ padding: '6px 16px' }}>Clear</button>
+      <form onSubmit={handleFilter} className="form-row" style={{ alignItems: 'center', marginBottom: 16 }}>
+        <label style={{ fontSize: 13 }}>From <input type="date" className="form-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
+        <label style={{ fontSize: 13 }}>To <input type="date" className="form-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
+        <button type="submit" className="btn btn-primary btn-sm">Filter</button>
+        <button type="button" className="btn btn-sm" onClick={clearFilter}>Clear</button>
       </form>
 
-      {loading ? (
-        <p>Loading...</p>
-      ) : salesData ? (
+      {loading ? <p>Loading...</p> : salesData && (
         <>
-          <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
-            <div style={{ padding: 12, border: '1px solid #ccc', borderRadius: 4, flex: 1 }}>
-              <p style={{ color: '#666', margin: 0, fontSize: 13 }}>Total Transactions</p>
-              <p style={{ fontSize: 20, fontWeight: 'bold', margin: '4px 0' }}>{salesData.summary.count}</p>
-            </div>
-            <div style={{ padding: 12, border: '1px solid #ccc', borderRadius: 4, flex: 1 }}>
-              <p style={{ color: '#666', margin: 0, fontSize: 13 }}>Total Quantity Sold</p>
-              <p style={{ fontSize: 20, fontWeight: 'bold', margin: '4px 0' }}>{salesData.summary.total_quantity}</p>
-            </div>
-            <div style={{ padding: 12, border: '1px solid #ccc', borderRadius: 4, flex: 1 }}>
-              <p style={{ color: '#666', margin: 0, fontSize: 13 }}>Total Revenue</p>
-              <p style={{ fontSize: 20, fontWeight: 'bold', margin: '4px 0' }}>GHS {Number(salesData.summary.total_revenue).toFixed(2)}</p>
-            </div>
+          <div className="stat-grid cols-3">
+            <div className="card"><p className="stat-label">Total Transactions</p><p className="stat-value" style={{ fontSize: 20 }}>{salesData.summary.count}</p></div>
+            <div className="card"><p className="stat-label">Total Quantity Sold</p><p className="stat-value" style={{ fontSize: 20 }}>{salesData.summary.total_quantity}</p></div>
+            <div className="card"><p className="stat-label">Total Revenue</p><p className="stat-value" style={{ fontSize: 20 }}>GHS {Number(salesData.summary.total_revenue).toFixed(2)}</p></div>
           </div>
 
           {salesData.sales.length === 0 ? (
-            <p style={{ color: '#666' }}>No sales found for this period.</p>
+            <p style={{ color: 'var(--color-text-muted)' }}>No sales found for this period.</p>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #333', textAlign: 'left' }}>
-                  <th style={{ padding: 8 }}>Product</th>
-                  {user.role !== 'store_manager' && <th style={{ padding: 8 }}>Store</th>}
-                  <th style={{ padding: 8 }}>Qty</th>
-                  <th style={{ padding: 8 }}>Total</th>
-                  <th style={{ padding: 8 }}>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {salesData.sales.map((s) => (
-                  <tr key={s.sale_id} style={{ borderBottom: '1px solid #ddd' }}>
-                    <td style={{ padding: 8 }}>{s.Product?.product_name} {s.Product?.size ? `(${s.Product.size})` : ''} {s.Product?.color ? `- ${s.Product.color}` : ''}</td>
-                    {user.role !== 'store_manager' && <td style={{ padding: 8 }}>Store {s.store_id}</td>}
-                    <td style={{ padding: 8 }}>{s.quantity}</td>
-                    <td style={{ padding: 8 }}>GHS {Number(s.total_price).toFixed(2)}</td>
-                    <td style={{ padding: 8 }}>{new Date(s.sale_date).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-wrap">
+              <table className="data-table">
+            <thead>
+              <tr>
+                <th>Product</th><th>Colour</th><th>Size</th>
+                {user.role !== 'store_manager' && <th>Store</th>}
+                <th>Qty</th><th>Total</th><th>Date</th>
+              </tr>
+            </thead>
+                <tbody>
+                  {salesData.sales.map((s) => (
+              <tr key={s.sale_id}>
+                <td>{s.ProductVariant?.Product?.product_name}</td>
+                <td>{s.ProductVariant?.color}</td>
+                <td>{s.ProductVariant?.size}</td>
+                {user.role !== 'store_manager' && <td>Store {s.store_id}</td>}
+                <td>{s.quantity}</td>
+                <td>GHS {Number(s.total_price).toFixed(2)}</td>
+                <td>{new Date(s.sale_date).toLocaleString()}</td>
+              </tr>
+          ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
-      ) : null}
-    </div>
+      )}
+    </Layout>
   );
 }

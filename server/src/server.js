@@ -6,6 +6,8 @@ const { sequelize, testConnection } = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const productRoutes = require('./routes/productRoutes');
 const Product = require('./models/Product');
+const ProductVariant = require('./models/ProductVariant');
+const ProductLocationSetting = require('./models/ProductLocationSetting');
 const Shipment = require('./models/Shipment');
 const shipmentRoutes = require('./routes/shipmentRoutes');
 const StockRequest = require('./models/StockRequest');
@@ -18,6 +20,7 @@ const inventoryRoutes = require('./routes/inventoryRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const userRoutes = require('./routes/userRoutes');
 const locationRoutes = require('./routes/locationRoutes');
+const activityLogRoutes = require('./routes/activityLogRoutes');
 
 const app = express();
 
@@ -37,19 +40,22 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/locations', locationRoutes);
+app.use('/api/activity-logs', activityLogRoutes);
 
 const PORT = process.env.PORT || 5000;
 
-Shipment.belongsTo(Product, { foreignKey: 'product_id' });
-StockRequest.belongsTo(Product, { foreignKey: 'product_id' });
+// Associations — variant now sits between product and every transactional table
+ProductVariant.belongsTo(Product, { foreignKey: 'product_id' });
+Product.hasMany(ProductVariant, { foreignKey: 'product_id' });
+Inventory.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
+Shipment.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
+StockRequest.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
+Sale.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
 StockTransfer.belongsTo(StockRequest, { foreignKey: 'request_id' });
-Sale.belongsTo(Product, { foreignKey: 'product_id' });
-Inventory.belongsTo(Product, { foreignKey: 'product_id' });
 
 app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
   await testConnection();
-
   try {
     await sequelize.sync();
     console.log('Models synced with database.');

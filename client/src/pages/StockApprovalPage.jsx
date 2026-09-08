@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import Layout from '../components/Layout';
+import { useToast } from '../context/ToastContext';
 import api from '../services/api';
 
 export default function StockApprovalPage() {
+  const { showToast } = useToast();
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
-  useEffect(() => {
-    fetchRequests();
-  }, []);
+  useEffect(() => { fetchRequests(); }, []);
 
   async function fetchRequests() {
     setLoading(true);
@@ -18,33 +16,29 @@ export default function StockApprovalPage() {
       const response = await api.get('/stock-requests');
       setRequests(response.data.requests);
     } catch (err) {
-      setError('Failed to load requests.');
+      showToast('Failed to load requests.', 'error');
     } finally {
       setLoading(false);
     }
   }
 
   async function handleApprove(request_id) {
-    setError('');
-    setSuccess('');
     try {
       const response = await api.put(`/stock-requests/${request_id}/approve`);
-      setSuccess(`Approved and dispatched. Remaining warehouse quantity: ${response.data.remaining_warehouse_quantity}.`);
+      showToast(`Stock transfer completed. Remaining warehouse quantity: ${response.data.remaining_warehouse_quantity}.`);
       fetchRequests();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to approve request.');
+      showToast(err.response?.data?.message || 'Failed to approve request.', 'error');
     }
   }
 
   async function handleReject(request_id) {
-    setError('');
-    setSuccess('');
     try {
       await api.put(`/stock-requests/${request_id}/reject`);
-      setSuccess('Request rejected.');
+      showToast('Request rejected.');
       fetchRequests();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to reject request.');
+      showToast(err.response?.data?.message || 'Failed to reject request.', 'error');
     }
   }
 
@@ -52,79 +46,67 @@ export default function StockApprovalPage() {
   const otherRequests = requests.filter((r) => r.status !== 'pending');
 
   return (
-    <div style={{ padding: 40, fontFamily: 'sans-serif', maxWidth: 900, margin: '0 auto' }}>
-      <Link to="/warehouse">&larr; Back to Dashboard</Link>
-      <h1>Stock Transfer / Approval</h1>
-
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      {success && <p style={{ color: 'green' }}>{success}</p>}
+    <Layout>
+      <div className="page-header">
+        <div>
+          <h1>Stock Transfer / Approval</h1>
+          <p>Review and act on stock requests from the stores.</p>
+        </div>
+      </div>
 
       <h3>Pending Requests</h3>
-      {loading ? (
-        <p>Loading...</p>
-      ) : pendingRequests.length === 0 ? (
-        <p>No pending requests.</p>
+      {loading ? <p>Loading...</p> : pendingRequests.length === 0 ? (
+        <p style={{ color: 'var(--color-text-muted)' }}>No pending requests.</p>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 32 }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #333', textAlign: 'left' }}>
-              <th style={{ padding: 8 }}>ID</th>
-              <th style={{ padding: 8 }}>Store</th>
-              <th style={{ padding: 8 }}>Product</th>
-              <th style={{ padding: 8 }}>Quantity</th>
-              <th style={{ padding: 8 }}>Date</th>
-              <th style={{ padding: 8 }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pendingRequests.map((r) => (
-              <tr key={r.request_id} style={{ borderBottom: '1px solid #ddd' }}>
-                <td style={{ padding: 8 }}>{r.request_id}</td>
-                <td style={{ padding: 8 }}>Store {r.store_id}</td>
-                <td style={{ padding: 8 }}>{r.Product?.product_name}</td>
-                <td style={{ padding: 8 }}>{r.quantity}</td>
-                <td style={{ padding: 8 }}>{new Date(r.request_date).toLocaleDateString()}</td>
-                <td style={{ padding: 8 }}>
-                  <button onClick={() => handleApprove(r.request_id)} style={{ marginRight: 8, background: '#28a745', color: 'white', border: 'none', padding: '4px 12px', borderRadius: 4 }}>
-                    Approve
-                  </button>
-                  <button onClick={() => handleReject(r.request_id)} style={{ background: '#dc3545', color: 'white', border: 'none', padding: '4px 12px', borderRadius: 4 }}>
-                    Reject
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-wrap" style={{ marginBottom: 24 }}>
+          <table className="data-table">
+            <thead><tr><th>ID</th><th>Store</th><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Date</th><th>Actions</th></tr></thead>
+            <tbody>
+              {pendingRequests.map((r) => (
+                <tr key={r.request_id}>
+                  <td>{r.request_id}</td>
+                  <td>Store {r.store_id}</td>
+                  <td>{r.ProductVariant?.Product?.product_name}</td>
+                  <td>{r.ProductVariant?.color}</td>
+                  <td>{r.ProductVariant?.size}</td>
+                  <td>{r.quantity}</td>
+                  <td>{new Date(r.request_date).toLocaleDateString()}</td>
+                  <td>
+                    <div className="action-buttons">
+                      <button className="btn btn-sm btn-success" onClick={() => handleApprove(r.request_id)}>Approve</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleReject(r.request_id)}>Reject</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h3>Request History</h3>
       {otherRequests.length === 0 ? (
-        <p>No history yet.</p>
+        <p style={{ color: 'var(--color-text-muted)' }}>No history yet.</p>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #333', textAlign: 'left' }}>
-              <th style={{ padding: 8 }}>ID</th>
-              <th style={{ padding: 8 }}>Store</th>
-              <th style={{ padding: 8 }}>Product</th>
-              <th style={{ padding: 8 }}>Quantity</th>
-              <th style={{ padding: 8 }}>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {otherRequests.map((r) => (
-              <tr key={r.request_id} style={{ borderBottom: '1px solid #ddd' }}>
-                <td style={{ padding: 8 }}>{r.request_id}</td>
-                <td style={{ padding: 8 }}>Store {r.store_id}</td>
-                <td style={{ padding: 8 }}>{r.Product?.product_name}</td>
-                <td style={{ padding: 8 }}>{r.quantity}</td>
-                <td style={{ padding: 8 }}>{r.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead><tr><th>ID</th><th>Store</th><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Status</th></tr></thead>
+            <tbody>
+              {otherRequests.map((r) => (
+                <tr key={r.request_id}>
+                  <td>{r.request_id}</td>
+                  <td>Store {r.store_id}</td>
+                  <td>{r.ProductVariant?.Product?.product_name}</td>
+                  <td>{r.ProductVariant?.color}</td>
+                  <td>{r.ProductVariant?.size}</td>
+                  <td>{r.quantity}</td>
+                  <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </div>
+    </Layout>
   );
 }

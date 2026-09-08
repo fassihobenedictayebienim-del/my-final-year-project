@@ -1,7 +1,7 @@
 const Warehouse = require('../models/Warehouse');
 const Store = require('../models/Store');
+const logActivity = require('../utils/activityLogger');
 
-// GET /api/locations — Administrator only
 async function listLocations(req, res) {
   try {
     const warehouses = await Warehouse.findAll();
@@ -13,18 +13,15 @@ async function listLocations(req, res) {
   }
 }
 
-// PUT /api/locations/warehouses/:id — Administrator only
 async function updateWarehouse(req, res) {
   try {
     const warehouse = await Warehouse.findByPk(req.params.id);
-    if (!warehouse) {
-      return res.status(404).json({ message: 'Warehouse not found.' });
-    }
+    if (!warehouse) return res.status(404).json({ message: 'Warehouse not found.' });
     const { name, location } = req.body;
-    await warehouse.update({
-      name: name ?? warehouse.name,
-      location: location ?? warehouse.location,
-    });
+    await warehouse.update({ name: name ?? warehouse.name, location: location ?? warehouse.location });
+
+    await logActivity(req.user, 'LOCATION_UPDATED', `Warehouse "${warehouse.name}" updated.`);
+
     res.json({ message: 'Warehouse updated successfully.', warehouse });
   } catch (error) {
     console.error('Update warehouse error:', error);
@@ -32,18 +29,15 @@ async function updateWarehouse(req, res) {
   }
 }
 
-// PUT /api/locations/stores/:id — Administrator only
 async function updateStore(req, res) {
   try {
     const store = await Store.findByPk(req.params.id);
-    if (!store) {
-      return res.status(404).json({ message: 'Store not found.' });
-    }
+    if (!store) return res.status(404).json({ message: 'Store not found.' });
     const { name, location } = req.body;
-    await store.update({
-      name: name ?? store.name,
-      location: location ?? store.location,
-    });
+    await store.update({ name: name ?? store.name, location: location ?? store.location });
+
+    await logActivity(req.user, 'LOCATION_UPDATED', `Store "${store.name}" updated.`);
+
     res.json({ message: 'Store updated successfully.', store });
   } catch (error) {
     console.error('Update store error:', error);

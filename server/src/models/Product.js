@@ -2,39 +2,11 @@ const { DataTypes } = require('sequelize');
 const { sequelize } = require('../config/db');
 
 const Product = sequelize.define('Product', {
-  product_id: {
-    type: DataTypes.STRING(50),
-    primaryKey: true,
-    // no autoIncrement — the Warehouse Manager supplies this,
-    // matching the code printed on the imported packaging
-  },
-  product_name: {
-    type: DataTypes.STRING(150),
-    allowNull: false,
-  },
-  size: {
-    type: DataTypes.STRING(20),
-    allowNull: true,
-  },
-  color: {
-    type: DataTypes.STRING(50),
-    allowNull: true,
-  },
-  unit_price: {
-    type: DataTypes.DECIMAL(10, 2),
-    allowNull: false,
-    validate: { min: 0 },
-  },
-  reorder_level: {
-    type: DataTypes.INTEGER.UNSIGNED,
-    allowNull: false,
-    defaultValue: 0,
-  },
+  product_id: { type: DataTypes.STRING(50), primaryKey: true },
+  product_name: { type: DataTypes.STRING(150), allowNull: false },
+  unit_price: { type: DataTypes.DECIMAL(10, 2), allowNull: false, validate: { min: 0 } },
 }, {
-  tableName: 'products',
-  timestamps: true,
-  createdAt: 'created_at',
-  updatedAt: 'updated_at',
+  tableName: 'products', timestamps: true, createdAt: 'created_at', updatedAt: 'updated_at',
 });
 
 module.exports = Product;

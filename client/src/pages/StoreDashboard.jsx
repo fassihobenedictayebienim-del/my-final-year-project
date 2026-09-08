@@ -1,89 +1,86 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import Layout from '../components/Layout';
 import api from '../services/api';
 
 export default function StoreDashboard() {
-  const { user, logout } = useAuth();
   const [data, setData] = useState(null);
+  const [inventory, setInventory] = useState([]);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchDashboard();
+    Promise.all([api.get('/reports/dashboard'), api.get('/inventory')])
+      .then(([dashRes, invRes]) => { setData(dashRes.data); setInventory(invRes.data.inventory); })
+      .catch(() => setError('Failed to load dashboard.'));
   }, []);
 
-  async function fetchDashboard() {
-    try {
-      const response = await api.get('/reports/dashboard');
-      setData(response.data);
-    } catch (err) {
-      setError('Failed to load dashboard.');
-    }
+  function stockBadge(qty) {
+    if (qty === 0) return <span className="stock-badge out-of-stock">🔴 Out of Stock</span>;
+    if (qty <= 5) return <span className="stock-badge low-stock">🟠 Low Stock</span>;
+    return <span className="stock-badge in-stock">🟢 In Stock</span>;
   }
 
   return (
-    <div style={{ padding: 40, fontFamily: 'sans-serif', maxWidth: 900, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Store Manager Dashboard</h1>
-        <button onClick={logout}>Logout</button>
+    <Layout>
+      <div className="page-header">
+        <div><h1>Store Dashboard</h1><p>Overview of your store's inventory and today's sales.</p></div>
       </div>
-      <p>Welcome, {user.name}.</p>
 
-      <nav style={{ marginBottom: 24 }}>
-  <Link to="/store/requests" style={{ marginRight: 16 }}>Stock Requests</Link>
-  <Link to="/store/sales" style={{ marginRight: 16 }}>Record Sale</Link>
-  <Link to="/reports" style={{ marginRight: 16 }}>Reports</Link>
-  <Link to="/settings">My Settings</Link>
-</nav>
+      {error && <div className="alert alert-error">{error}</div>}
 
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-
-      {!data ? (
-        <p>Loading...</p>
-      ) : (
+      {!data ? <p>Loading...</p> : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-            <div style={{ padding: 16, border: '1px solid #ccc', borderRadius: 4 }}>
-              <p style={{ color: '#666', margin: 0 }}>Store Inventory Value</p>
-              <p style={{ fontSize: 24, fontWeight: 'bold', margin: '4px 0' }}>GHS {Number(data.total_inventory_value).toFixed(2)}</p>
-            </div>
-            <div style={{ padding: 16, border: '1px solid #ccc', borderRadius: 4 }}>
-              <p style={{ color: '#666', margin: 0 }}>Today's Sales Revenue</p>
-              <p style={{ fontSize: 24, fontWeight: 'bold', margin: '4px 0' }}>GHS {Number(data.today_sales_total).toFixed(2)}</p>
-            </div>
-            <div style={{ padding: 16, border: '1px solid #ccc', borderRadius: 4 }}>
-              <p style={{ color: '#666', margin: 0 }}>Transactions Today</p>
-              <p style={{ fontSize: 24, fontWeight: 'bold', margin: '4px 0' }}>{data.today_sales_count}</p>
-            </div>
+          <div className="stat-grid cols-3">
+            <div className="card"><p className="stat-label">Store Inventory Value</p><p className="stat-value">GHS {Number(data.total_inventory_value).toFixed(2)}</p></div>
+            <div className="card"><p className="stat-label">Today's Sales Revenue</p><p className="stat-value">GHS {Number(data.today_sales_total).toFixed(2)}</p></div>
+            <div className="card"><p className="stat-label">Transactions Today</p><p className="stat-value">{data.today_sales_count}</p></div>
           </div>
+
+          <h3>Current Stock</h3>
+          {inventory.length === 0 ? (
+            <p style={{ color: 'var(--color-text-muted)' }}>No stock recorded at your store yet.</p>
+          ) : (
+            <div className="table-wrap" style={{ marginBottom: 24 }}>
+              <table className="data-table">
+                <thead><tr><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Status</th></tr></thead>
+                <tbody>
+                  {inventory.map((row) => (
+                    <tr key={row.inventory_id}>
+                      <td>{row.ProductVariant?.Product?.product_name}</td>
+                      <td>{row.ProductVariant?.color}</td>
+                      <td>{row.ProductVariant?.size}</td>
+                      <td>{row.quantity}</td>
+                      <td>{stockBadge(row.quantity)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <h3>Recent Sales</h3>
           {data.recent_sales.length === 0 ? (
-            <p style={{ color: '#666' }}>No sales recorded yet.</p>
+            <p style={{ color: 'var(--color-text-muted)' }}>No sales recorded yet.</p>
           ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #333', textAlign: 'left' }}>
-                  <th style={{ padding: 8 }}>Product</th>
-                  <th style={{ padding: 8 }}>Qty</th>
-                  <th style={{ padding: 8 }}>Total</th>
-                  <th style={{ padding: 8 }}>Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.recent_sales.map((s) => (
-                  <tr key={s.sale_id} style={{ borderBottom: '1px solid #ddd' }}>
-                    <td style={{ padding: 8 }}>{s.Product?.product_name}</td>
-                    <td style={{ padding: 8 }}>{s.quantity}</td>
-                    <td style={{ padding: 8 }}>GHS {Number(s.total_price).toFixed(2)}</td>
-                    <td style={{ padding: 8 }}>{new Date(s.sale_date).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead><tr><th>Product</th><th>Colour</th><th>Size</th><th>Qty</th><th>Total</th><th>Date</th></tr></thead>
+                <tbody>
+                  {data.recent_sales.map((s) => (
+                    <tr key={s.sale_id}>
+                      <td>{s.ProductVariant?.Product?.product_name}</td>
+                      <td>{s.ProductVariant?.color}</td>
+                      <td>{s.ProductVariant?.size}</td>
+                      <td>{s.quantity}</td>
+                      <td>GHS {Number(s.total_price).toFixed(2)}</td>
+                      <td>{new Date(s.sale_date).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </>
       )}
-    </div>
+    </Layout>
   );
 }

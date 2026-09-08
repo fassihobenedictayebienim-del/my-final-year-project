@@ -1,140 +1,94 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import Layout from '../components/Layout';
+import { useToast } from '../context/ToastContext';
 import api from '../services/api';
 
 export default function ShipmentPage() {
-  const [products, setProducts] = useState([]);
+  const { showToast } = useToast();
   const [inventory, setInventory] = useState([]);
   const [shipments, setShipments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
-  const [productId, setProductId] = useState('');
+  const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('');
   const [dateReceived, setDateReceived] = useState(() => new Date().toISOString().slice(0, 10));
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  useEffect(() => { fetchData(); }, []);
 
   async function fetchData() {
     setLoading(true);
     try {
-      const [productsRes, inventoryRes, shipmentsRes] = await Promise.all([
-        api.get('/products'),
-        api.get('/inventory'),
-        api.get('/shipments'),
-      ]);
-      setProducts(productsRes.data.products);
+      const [inventoryRes, shipmentsRes] = await Promise.all([api.get('/inventory'), api.get('/shipments')]);
       setInventory(inventoryRes.data.inventory);
       setShipments(shipmentsRes.data.shipments);
     } catch (err) {
-      setError('Failed to load data.');
+      showToast('Failed to load data.', 'error');
     } finally {
       setLoading(false);
     }
   }
 
-  function getQuantity(product_id) {
-    const row = inventory.find((i) => i.product_id === product_id);
-    return row ? row.quantity : 0;
-  }
-
   async function handleSubmit(e) {
     e.preventDefault();
-    setError('');
-    setSuccess('');
     try {
-      const response = await api.post('/shipments', {
-        product_id: productId,
-        quantity,
-        date_received: dateReceived,
-      });
-      setSuccess(`Shipment recorded. Warehouse quantity for this product is now ${response.data.new_warehouse_quantity}.`);
-      setProductId('');
+      const response = await api.post('/shipments', { variant_id: variantId, quantity, date_received: dateReceived });
+      showToast(`Shipment recorded — new quantity: ${response.data.new_warehouse_quantity}.`);
+      setVariantId('');
       setQuantity('');
       fetchData();
     } catch (err) {
-      setError(err.response?.data?.message || 'Failed to record shipment.');
+      showToast(err.response?.data?.message || 'Failed to record shipment.', 'error');
     }
   }
 
   return (
-    <div style={{ padding: 40, fontFamily: 'sans-serif', maxWidth: 900, margin: '0 auto' }}>
-      <Link to="/warehouse">&larr; Back to Dashboard</Link>
-      <h1>Record Shipment</h1>
-      <p style={{ color: '#666' }}>
-        Use this when a shipment arrives for a product already in the system. To register a brand-new product for the
-        first time, use Product Management instead.
-      </p>
+    <Layout>
+      <div className="page-header">
+        <div>
+          <h1>Record Shipment</h1>
+          <p>Restock an existing colour/size variant. To add a brand-new product or variant, use Product Management.</p>
+        </div>
+      </div>
 
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      {success && <p style={{ color: 'green' }}>{success}</p>}
-
-      <form onSubmit={handleSubmit} style={{ marginBottom: 32, padding: 16, border: '1px solid #ccc', borderRadius: 4 }}>
-        <div style={{ marginBottom: 8 }}>
-          <select
-            value={productId}
-            onChange={(e) => setProductId(e.target.value)}
-            required
-            style={{ padding: 6, width: '100%' }}
-          >
-            <option value="">Select a product</option>
-            {products.map((p) => (
-              <option key={p.product_id} value={p.product_id}>
-                {p.product_id} — {p.product_name} {p.size ? `(${p.size})` : ''} {p.color ? `- ${p.color}` : ''} — currently {getQuantity(p.product_id)} in warehouse
+      <form onSubmit={handleSubmit} className="form-card">
+        <div className="form-row">
+          <select className="form-input" value={variantId} onChange={(e) => setVariantId(e.target.value)} required style={{ flex: 1 }}>
+            <option value="">Select a variant</option>
+            {inventory.map((row) => (
+              <option key={row.variant_id} value={row.variant_id}>
+                {row.ProductVariant.Product.product_name} — {row.ProductVariant.color} / {row.ProductVariant.size} — currently {row.quantity}
               </option>
             ))}
           </select>
         </div>
-        <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
-          <input
-            type="number"
-            placeholder="Quantity received"
-            value={quantity}
-            onChange={(e) => setQuantity(e.target.value)}
-            required
-            min="1"
-            style={{ padding: 6, flex: 1 }}
-          />
-          <input
-            type="date"
-            value={dateReceived}
-            onChange={(e) => setDateReceived(e.target.value)}
-            style={{ padding: 6, flex: 1 }}
-          />
+        <div className="form-row">
+          <input className="form-input" type="number" placeholder="Quantity received" value={quantity} onChange={(e) => setQuantity(e.target.value)} required min="1" style={{ flex: 1 }} />
+          <input className="form-input" type="date" value={dateReceived} onChange={(e) => setDateReceived(e.target.value)} style={{ flex: 1 }} />
         </div>
-        <button type="submit" style={{ padding: '8px 16px' }}>Record Shipment</button>
+        <button type="submit" className="btn btn-primary">Record Shipment</button>
       </form>
 
       <h3>Shipment History</h3>
-      {loading ? (
-        <p>Loading...</p>
-      ) : shipments.length === 0 ? (
-        <p style={{ color: '#666' }}>No shipments recorded yet.</p>
+      {loading ? <p>Loading...</p> : shipments.length === 0 ? (
+        <p style={{ color: 'var(--color-text-muted)' }}>No shipments recorded yet.</p>
       ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ borderBottom: '2px solid #333', textAlign: 'left' }}>
-              <th style={{ padding: 8 }}>Product ID</th>
-              <th style={{ padding: 8 }}>Product</th>
-              <th style={{ padding: 8 }}>Quantity</th>
-              <th style={{ padding: 8 }}>Date Received</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shipments.map((s) => (
-              <tr key={s.shipment_id} style={{ borderBottom: '1px solid #ddd' }}>
-                <td style={{ padding: 8, fontFamily: 'monospace' }}>{s.product_id}</td>
-                <td style={{ padding: 8 }}>{s.Product?.product_name}</td>
-                <td style={{ padding: 8 }}>{s.quantity}</td>
-                <td style={{ padding: 8 }}>{new Date(s.date_received).toLocaleDateString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead><tr><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Date Received</th></tr></thead>
+            <tbody>
+              {shipments.map((s) => (
+                <tr key={s.shipment_id}>
+                  <td>{s.ProductVariant?.Product?.product_name}</td>
+                  <td>{s.ProductVariant?.color}</td>
+                  <td>{s.ProductVariant?.size}</td>
+                  <td>{s.quantity}</td>
+                  <td>{new Date(s.date_received).toLocaleDateString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
-    </div>
+    </Layout>
   );
 }

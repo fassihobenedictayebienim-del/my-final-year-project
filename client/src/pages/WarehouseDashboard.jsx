@@ -1,70 +1,47 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import Layout from '../components/Layout';
 import api from '../services/api';
 
 export default function WarehouseDashboard() {
-  const { user, logout } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    fetchDashboard();
+    api.get('/reports/dashboard').then((res) => setData(res.data)).catch(() => setError('Failed to load dashboard.'));
   }, []);
 
-  async function fetchDashboard() {
-    try {
-      const response = await api.get('/reports/dashboard');
-      setData(response.data);
-    } catch (err) {
-      setError('Failed to load dashboard.');
-    }
-  }
-
   return (
-    <div style={{ padding: 40, fontFamily: 'sans-serif', maxWidth: 900, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1>Warehouse Manager Dashboard</h1>
-        <button onClick={logout}>Logout</button>
+    <Layout>
+      <div className="page-header">
+        <div>
+          <h1>Warehouse Dashboard</h1>
+          <p>Overview of your warehouse inventory and pending work.</p>
+        </div>
       </div>
-      <p>Welcome, {user.name}.</p>
 
-      <nav style={{ marginBottom: 24 }}>
-  <Link to="/warehouse/products" style={{ marginRight: 16 }}>Manage Products</Link>
-  <Link to="/warehouse/shipments" style={{ marginRight: 16 }}>Record Shipment</Link>
-  <Link to="/warehouse/requests" style={{ marginRight: 16 }}>Stock Requests</Link>
-  <Link to="/reports" style={{ marginRight: 16 }}>Reports</Link>
-  <Link to="/settings">My Settings</Link>
-</nav>
-
-      {error && <p style={{ color: 'red' }}>{error}</p>}
+      {error && <div className="alert alert-error">{error}</div>}
 
       {!data ? (
         <p>Loading...</p>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-          <div style={{ padding: 16, border: '1px solid #ccc', borderRadius: 4 }}>
-            <p style={{ color: '#666', margin: 0 }}>Warehouse Inventory Value</p>
-            <p style={{ fontSize: 24, fontWeight: 'bold', margin: '4px 0' }}>GHS {Number(data.total_inventory_value).toFixed(2)}</p>
+        <div className="stat-grid cols-3">
+          <div className="card">
+            <p className="stat-label">Warehouse Inventory Value</p>
+            <p className="stat-value">GHS {Number(data.total_inventory_value).toFixed(2)}</p>
           </div>
-          <div style={{ padding: 16, border: '1px solid #ccc', borderRadius: 4, background: data.low_stock_count > 0 ? '#f8d7da' : 'inherit' }}>
-            <p style={{ color: '#666', margin: 0 }}>Low-Stock Products</p>
-            <p style={{ fontSize: 24, fontWeight: 'bold', margin: '4px 0' }}>
-              {data.low_stock_count} {data.low_stock_count > 0 && '⚠️'}
-            </p>
-            {data.low_stock_count > 0 && (
-              <Link to="/warehouse/shipments" style={{ fontSize: 13 }}>Record a shipment &rarr;</Link>
-            )}
+          <div className={`card ${data.low_stock_count > 0 ? 'stat-card alert' : ''}`}>
+            <p className="stat-label">Low-Stock Products</p>
+            <p className="stat-value">{data.low_stock_count} {data.low_stock_count > 0 && '⚠️'}</p>
+            {data.low_stock_count > 0 && <Link to="/warehouse/shipments">Record a shipment &rarr;</Link>}
           </div>
-          <div style={{ padding: 16, border: '1px solid #ccc', borderRadius: 4, background: data.pending_requests_count > 0 ? '#fff3cd' : 'inherit' }}>
-            <p style={{ color: '#666', margin: 0 }}>Pending Requests</p>
-            <p style={{ fontSize: 24, fontWeight: 'bold', margin: '4px 0' }}>{data.pending_requests_count}</p>
-            {data.pending_requests_count > 0 && (
-              <Link to="/warehouse/requests" style={{ fontSize: 13 }}>Review now &rarr;</Link>
-            )}
+          <div className={`card ${data.pending_requests_count > 0 ? 'stat-card pending' : ''}`}>
+            <p className="stat-label">Pending Requests</p>
+            <p className="stat-value">{data.pending_requests_count}</p>
+            {data.pending_requests_count > 0 && <Link to="/warehouse/requests">Review now &rarr;</Link>}
           </div>
         </div>
       )}
-    </div>
+    </Layout>
   );
 }
