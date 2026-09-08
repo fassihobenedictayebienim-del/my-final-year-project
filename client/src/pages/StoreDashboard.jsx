@@ -1,22 +1,51 @@
 import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
+import { useToast } from '../context/ToastContext';
 import api from '../services/api';
 
 export default function StoreDashboard() {
+  const { showToast } = useToast();
   const [data, setData] = useState(null);
-  const [inventory, setInventory] = useState([]);
+  const [summary, setSummary] = useState([]);
   const [error, setError] = useState('');
+  const [editingReorder, setEditingReorder] = useState(null);
+  const [reorderValue, setReorderValue] = useState('');
 
-  useEffect(() => {
-    Promise.all([api.get('/reports/dashboard'), api.get('/inventory')])
-      .then(([dashRes, invRes]) => { setData(dashRes.data); setInventory(invRes.data.inventory); })
-      .catch(() => setError('Failed to load dashboard.'));
-  }, []);
+  useEffect(() => { fetchAll(); }, []);
 
-  function stockBadge(qty) {
-    if (qty === 0) return <span className="stock-badge out-of-stock">🔴 Out of Stock</span>;
-    if (qty <= 5) return <span className="stock-badge low-stock">🟠 Low Stock</span>;
+  async function fetchAll() {
+    try {
+      const [dashRes, summaryRes] = await Promise.all([
+        api.get('/reports/dashboard'),
+        api.get('/inventory/summary'),
+      ]);
+      setData(dashRes.data);
+      setSummary(summaryRes.data.summary);
+    } catch (err) {
+      setError('Failed to load dashboard.');
+    }
+  }
+
+  function statusBadge(status) {
+    if (status === 'out') return <span className="stock-badge out-of-stock">🔴 Out of Stock</span>;
+    if (status === 'low') return <span className="stock-badge low-stock">🟠 Reorder Required</span>;
     return <span className="stock-badge in-stock">🟢 In Stock</span>;
+  }
+
+  function startEditReorder(product_id, currentLevel) {
+    setEditingReorder(product_id);
+    setReorderValue(currentLevel);
+  }
+
+  async function saveReorderLevel(product_id) {
+    try {
+      await api.put(`/inventory/reorder-level/${product_id}`, { reorder_level: reorderValue });
+      showToast('Reorder level updated.');
+      setEditingReorder(null);
+      fetchAll();
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update reorder level.', 'error');
+    }
   }
 
   return (
@@ -35,21 +64,41 @@ export default function StoreDashboard() {
             <div className="card"><p className="stat-label">Transactions Today</p><p className="stat-value">{data.today_sales_count}</p></div>
           </div>
 
-          <h3>Current Stock</h3>
-          {inventory.length === 0 ? (
+          <h3>Stock Status &amp; Reorder</h3>
+          {summary.length === 0 ? (
             <p style={{ color: 'var(--color-text-muted)' }}>No stock recorded at your store yet.</p>
           ) : (
             <div className="table-wrap" style={{ marginBottom: 24 }}>
               <table className="data-table">
-                <thead><tr><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Status</th></tr></thead>
+                <thead><tr><th>Product</th><th>Total Stock</th><th>Reorder Level</th><th>Status</th><th>Low Variants</th><th>Actions</th></tr></thead>
                 <tbody>
-                  {inventory.map((row) => (
-                    <tr key={row.inventory_id}>
-                      <td>{row.ProductVariant?.Product?.product_name}</td>
-                      <td>{row.ProductVariant?.color}</td>
-                      <td>{row.ProductVariant?.size}</td>
-                      <td>{row.quantity}</td>
-                      <td>{stockBadge(row.quantity)}</td>
+                  {summary.map((row) => (
+                    <tr key={row.product_id}>
+                      <td>{row.product_name}</td>
+                      <td>{row.total_quantity}</td>
+                      <td>
+                        {editingReorder === row.product_id ? (
+                          <input className="form-input" type="number" min="0" value={reorderValue} onChange={(e) => setReorderValue(e.target.value)} style={{ width: 80 }} />
+                        ) : row.reorder_level}
+                      </td>
+                      <td>{statusBadge(row.status)}</td>
+                      <td>
+                        {row.low_variants.length === 0 ? '—' : row.low_variants.map((v) => (
+                          <span key={v.variant_id} className={`stock-badge ${v.flag === 'out' ? 'out-of-stock' : 'low-stock'}`} style={{ marginRight: 4 }}>
+                            {v.color}/{v.size}: {v.quantity}
+                          </span>
+                        ))}
+                      </td>
+                      <td>
+                        {editingReorder === row.product_id ? (
+                          <div className="action-buttons">
+                            <button className="btn btn-sm btn-success" onClick={() => saveReorderLevel(row.product_id)}>Save</button>
+                            <button className="btn btn-sm" onClick={() => setEditingReorder(null)}>Cancel</button>
+                          </div>
+                        ) : (
+                          <button className="btn btn-sm" onClick={() => startEditReorder(row.product_id, row.reorder_level)}>Set Reorder Level</button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
