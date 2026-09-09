@@ -14,6 +14,7 @@ import ReportsPage from './pages/ReportsPage';
 import UserManagementPage from './pages/UserManagementPage';
 import MySettingsPage from './pages/MySettingsPage';
 import ActivityLogPage from './pages/ActivityLogPage';
+import StoreInventoryPage from './pages/StoreInventoryPage';
 
 function App() {
   return (
@@ -33,6 +34,7 @@ function App() {
           <Route path="/store" element={<ProtectedRoute allowedRoles={['store_manager']}><StoreDashboard /></ProtectedRoute>} />
           <Route path="/store/requests" element={<ProtectedRoute allowedRoles={['store_manager']}><StockRequestPage /></ProtectedRoute>} />
           <Route path="/store/sales" element={<ProtectedRoute allowedRoles={['store_manager']}><SalesRecordingPage /></ProtectedRoute>} />
+          <Route path="/store/inventory" element={<ProtectedRoute allowedRoles={['store_manager']}><StoreInventoryPage /></ProtectedRoute>} />
 
           <Route path="/reports" element={<ProtectedRoute allowedRoles={['administrator', 'warehouse_manager', 'store_manager']}><ReportsPage /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute allowedRoles={['administrator', 'warehouse_manager', 'store_manager']}><MySettingsPage /></ProtectedRoute>} />

@@ -1,27 +1,29 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from 'recharts';
 import Layout from '../components/Layout';
 import { useToast } from '../context/ToastContext';
+import StatusPie from '../components/StatusPie';
 import api from '../services/api';
+
+const RANGES = [{ label: '7D', value: 7 }, { label: '30D', value: 30 }, { label: '90D', value: 90 }];
 
 export default function WarehouseDashboard() {
   const { showToast } = useToast();
   const [data, setData] = useState(null);
-  const [summary, setSummary] = useState([]);
   const [error, setError] = useState('');
+  const [days, setDays] = useState(30);
   const [editingReorder, setEditingReorder] = useState(null);
   const [reorderValue, setReorderValue] = useState('');
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { fetchDashboard(days); }, [days]);
 
-  async function fetchAll() {
+  async function fetchDashboard(range) {
     try {
-      const [dashRes, summaryRes] = await Promise.all([
-        api.get('/reports/dashboard'),
-        api.get('/inventory/summary'),
-      ]);
-      setData(dashRes.data);
-      setSummary(summaryRes.data.summary);
+      const response = await api.get('/dashboard/warehouse', { params: { days: range } });
+      setData(response.data);
     } catch (err) {
       setError('Failed to load dashboard.');
     }
@@ -43,7 +45,7 @@ export default function WarehouseDashboard() {
       await api.put(`/inventory/reorder-level/${product_id}`, { reorder_level: reorderValue });
       showToast('Reorder level updated.');
       setEditingReorder(null);
-      fetchAll();
+      fetchDashboard(days);
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to update reorder level.', 'error');
     }
@@ -56,63 +58,130 @@ export default function WarehouseDashboard() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
-
       {!data ? <p>Loading...</p> : (
-        <div className="stat-grid cols-3">
-          <div className="card"><p className="stat-label">Warehouse Inventory Value</p><p className="stat-value">GHS {Number(data.total_inventory_value).toFixed(2)}</p></div>
-          <div className={`card ${data.low_stock_count > 0 ? 'stat-card alert' : ''}`}>
-            <p className="stat-label">Low-Stock Products</p>
-            <p className="stat-value">{data.low_stock_count} {data.low_stock_count > 0 && '⚠️'}</p>
-            {data.low_stock_count > 0 && <Link to="/warehouse/shipments">Record a shipment &rarr;</Link>}
+        <>
+          <div className="stat-grid cols-3">
+            <div className="card"><p className="stat-label">Total Warehouse Stock</p><p className="stat-value">{data.kpis.total_warehouse_stock}</p></div>
+            <div className="card"><p className="stat-label">Warehouse Inventory Value</p><p className="stat-value">GHS {Number(data.kpis.warehouse_inventory_value).toFixed(2)}</p></div>
+            <div className={`card ${data.kpis.pending_store_requests > 0 ? 'stat-card pending' : ''}`}>
+              <p className="stat-label">Pending Store Requests</p><p className="stat-value">{data.kpis.pending_store_requests}</p>
+              {data.kpis.pending_store_requests > 0 && <Link to="/warehouse/requests">Review now &rarr;</Link>}
+            </div>
+            <div className={`card ${data.kpis.products_below_reorder > 0 ? 'stat-card alert' : ''}`}>
+              <p className="stat-label">Below Reorder Level</p><p className="stat-value">{data.kpis.products_below_reorder}</p>
+              {data.kpis.products_below_reorder > 0 && <Link to="/warehouse/shipments">Record a shipment &rarr;</Link>}
+            </div>
+            <div className="card"><p className="stat-label">Recent Transfers</p><p className="stat-value">{data.kpis.recent_transfers_count}</p></div>
           </div>
-          <div className={`card ${data.pending_requests_count > 0 ? 'stat-card pending' : ''}`}>
-            <p className="stat-label">Pending Requests</p>
-            <p className="stat-value">{data.pending_requests_count}</p>
-            {data.pending_requests_count > 0 && <Link to="/warehouse/requests">Review now &rarr;</Link>}
-          </div>
-        </div>
-      )}
 
-      <h3>Stock Status &amp; Reorder</h3>
-      {summary.length === 0 ? (
-        <p style={{ color: 'var(--color-text-muted)' }}>No stock recorded at the warehouse yet.</p>
-      ) : (
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead><tr><th>Product</th><th>Total Stock</th><th>Reorder Level</th><th>Status</th><th>Low Variants</th><th>Actions</th></tr></thead>
-            <tbody>
-              {summary.map((row) => (
-                <tr key={row.product_id}>
-                  <td>{row.product_name}</td>
-                  <td>{row.total_quantity}</td>
-                  <td>
-                    {editingReorder === row.product_id ? (
-                      <input className="form-input" type="number" min="0" value={reorderValue} onChange={(e) => setReorderValue(e.target.value)} style={{ width: 80 }} />
-                    ) : row.reorder_level}
-                  </td>
-                  <td>{statusBadge(row.status)}</td>
-                  <td>
-                    {row.low_variants.length === 0 ? '—' : row.low_variants.map((v) => (
-                      <span key={v.variant_id} className={`stock-badge ${v.flag === 'out' ? 'out-of-stock' : 'low-stock'}`} style={{ marginRight: 4 }}>
-                        {v.color}/{v.size}: {v.quantity}
-                      </span>
+          <div className="chart-card" style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h3>Stock Movement (Received vs. Dispatched)</h3>
+              <div className="range-tabs">
+                {RANGES.map((r) => (
+                  <button key={r.value} className={`range-tab ${days === r.value ? 'active' : ''}`} onClick={() => setDays(r.value)}>{r.label}</button>
+                ))}
+              </div>
+            </div>
+            {data.stock_movement_trend.every((d) => d.received === 0 && d.dispatched === 0) ? (
+              <div className="chart-empty">No movement recorded in this period.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={data.stock_movement_trend}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
+                  <YAxis tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Legend wrapperStyle={{ fontSize: 12.5 }} />
+                  <Line type="monotone" dataKey="received" name="Received" stroke="#16a34a" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="dispatched" name="Dispatched" stroke="var(--color-primary)" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          <div className="chart-grid">
+            <div className="chart-card">
+              <h3>Stock Transferred to Stores</h3>
+              {data.stock_transferred_to_stores.every((d) => d.quantity === 0) ? <div className="chart-empty">No transfers in this period.</div> : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={data.stock_transferred_to_stores}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                    <XAxis dataKey="store_name" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <Tooltip />
+                    <Bar dataKey="quantity" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            <div className="chart-card">
+              <h3>Top-Moving Products</h3>
+              {data.top_moving_products.length === 0 ? <div className="chart-empty">No movement in this period.</div> : (
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={data.top_moving_products} layout="vertical" margin={{ left: 20 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                    <XAxis type="number" tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="product_name" tick={{ fontSize: 11 }} width={110} />
+                    <Tooltip formatter={(v) => [v, 'Units moved']} />
+                    <Bar dataKey="quantity_moved" fill="#16a34a" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          <div className="chart-grid">
+            <div className="chart-card"><h3>Stock Status</h3><StatusPie inStock={data.stock_status.in_stock} lowStock={data.stock_status.low_stock} outOfStock={data.stock_status.out_of_stock} /></div>
+            <div className="chart-card">
+              <h3>Recent Stock Transfers</h3>
+              {data.recent_transfers.length === 0 ? <p style={{ color: 'var(--color-text-muted)' }}>No transfers yet.</p> : (
+                <table className="data-table">
+                  <thead><tr><th>Store</th><th>Qty</th><th>Status</th><th>Date</th></tr></thead>
+                  <tbody>
+                    {data.recent_transfers.map((t) => (
+                      <tr key={t.transfer_id}><td>Store {t.store_id}</td><td>{t.quantity}</td><td><span className={`badge badge-${t.status === 'received' ? 'fulfilled' : 'approved'}`}>{t.status}</span></td><td>{new Date(t.date).toLocaleDateString()}</td></tr>
                     ))}
-                  </td>
-                  <td>
-                    {editingReorder === row.product_id ? (
-                      <div className="action-buttons">
-                        <button className="btn btn-sm btn-success" onClick={() => saveReorderLevel(row.product_id)}>Save</button>
-                        <button className="btn btn-sm" onClick={() => setEditingReorder(null)}>Cancel</button>
-                      </div>
-                    ) : (
-                      <button className="btn btn-sm" onClick={() => startEditReorder(row.product_id, row.reorder_level)}>Set Reorder Level</button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+
+          <h3>Warehouse Low-Stock Products</h3>
+          {data.warehouse_low_stock_products.length === 0 ? (
+            <p style={{ color: 'var(--color-text-muted)' }}>Everything is above its reorder level. 🎉</p>
+          ) : (
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead><tr><th>Product</th><th>Total Stock</th><th>Reorder Level</th><th>Status</th><th>Low Variants</th><th>Actions</th></tr></thead>
+                <tbody>
+                  {data.warehouse_low_stock_products.map((row) => (
+                    <tr key={row.product_id}>
+                      <td>{row.product_name}</td>
+                      <td>{row.total_quantity}</td>
+                      <td>{editingReorder === row.product_id ? (
+                        <input className="form-input" type="number" min="0" value={reorderValue} onChange={(e) => setReorderValue(e.target.value)} style={{ width: 80 }} />
+                      ) : row.reorder_level}</td>
+                      <td>{statusBadge(row.status)}</td>
+                      <td>{row.low_variants.length === 0 ? '—' : row.low_variants.map((v) => (
+                        <span key={v.variant_id} className={`stock-badge ${v.flag === 'out' ? 'out-of-stock' : 'low-stock'}`} style={{ marginRight: 4 }}>{v.color}/{v.size}: {v.quantity}</span>
+                      ))}</td>
+                      <td>{editingReorder === row.product_id ? (
+                        <div className="action-buttons">
+                          <button className="btn btn-sm btn-success" onClick={() => saveReorderLevel(row.product_id)}>Save</button>
+                          <button className="btn btn-sm" onClick={() => setEditingReorder(null)}>Cancel</button>
+                        </div>
+                      ) : (
+                        <button className="btn btn-sm" onClick={() => startEditReorder(row.product_id, row.reorder_level)}>Set Reorder Level</button>
+                      )}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
       )}
     </Layout>
   );

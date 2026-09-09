@@ -8,6 +8,9 @@ export default function StockApprovalPage() {
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
   useEffect(() => { fetchRequests(); }, []);
 
   async function fetchRequests() {
@@ -44,6 +47,15 @@ export default function StockApprovalPage() {
 
   const pendingRequests = requests.filter((r) => r.status === 'pending');
   const otherRequests = requests.filter((r) => r.status !== 'pending');
+
+  const filteredHistory = otherRequests.filter((r) => {
+    const d = new Date(r.request_date);
+    if (startDate && d < new Date(startDate)) return false;
+    if (endDate && d > new Date(endDate + 'T23:59:59')) return false;
+    return true;
+  });
+
+  function clearFilter() { setStartDate(''); setEndDate(''); }
 
   return (
     <Layout>
@@ -85,14 +97,21 @@ export default function StockApprovalPage() {
       )}
 
       <h3>Request History</h3>
-      {otherRequests.length === 0 ? (
-        <p style={{ color: 'var(--color-text-muted)' }}>No history yet.</p>
+      <div className="form-row" style={{ alignItems: 'center', marginBottom: 16 }}>
+        <label style={{ fontSize: 13 }}>From <input type="date" className="form-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
+        <label style={{ fontSize: 13 }}>To <input type="date" className="form-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
+        <button type="button" className="btn btn-sm" onClick={clearFilter}>Clear</button>
+        <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{filteredHistory.length} of {otherRequests.length} shown</span>
+      </div>
+
+      {filteredHistory.length === 0 ? (
+        <p style={{ color: 'var(--color-text-muted)' }}>{otherRequests.length === 0 ? 'No history yet.' : 'No history in this date range.'}</p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
             <thead><tr><th>ID</th><th>Store</th><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Status</th></tr></thead>
             <tbody>
-              {otherRequests.map((r) => (
+              {filteredHistory.map((r) => (
                 <tr key={r.request_id}>
                   <td>{r.request_id}</td>
                   <td>Store {r.store_id}</td>

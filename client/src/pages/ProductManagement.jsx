@@ -13,6 +13,7 @@ export default function ProductManagement() {
   const [variantRows, setVariantRows] = useState([{ color: '', size: '', quantity: '' }]);
 
   const [expandedProduct, setExpandedProduct] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [variantDetail, setVariantDetail] = useState({});
   const [newVariant, setNewVariant] = useState({ color: '', size: '' });
 
@@ -167,12 +168,25 @@ export default function ProductManagement() {
         </form>
       )}
 
+            <div className="form-row" style={{ marginBottom: 16 }}>
+        <input
+             className="form-input"
+             placeholder="Search by product name or ID..."
+             value={searchTerm}
+             onChange={(e) => setSearchTerm(e.target.value)}
+             style={{ width: '100%', maxWidth: 420 }}
+        />
+      </div>
+
       {loading ? <p>Loading products...</p> : (
         <div className="table-wrap">
           <table className="data-table">
             <thead><tr><th>Product ID</th><th>Name</th><th>Unit Price</th><th>Actions</th></tr></thead>
             <tbody>
-              {products.map((p) => (
+              {products.filter((p) =>
+                p.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                p.product_id.toLowerCase().includes(searchTerm.toLowerCase())
+              ).map((p) => (
                 <>
                   <tr key={p.product_id}>
                     <td className="mono">{p.product_id}</td>

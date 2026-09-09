@@ -21,6 +21,7 @@ const reportRoutes = require('./routes/reportRoutes');
 const userRoutes = require('./routes/userRoutes');
 const locationRoutes = require('./routes/locationRoutes');
 const activityLogRoutes = require('./routes/activityLogRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
 
 const app = express();
 
@@ -41,10 +42,10 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/locations', locationRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 const PORT = process.env.PORT || 5000;
 
-// Associations — variant now sits between product and every transactional table
 ProductVariant.belongsTo(Product, { foreignKey: 'product_id' });
 Product.hasMany(ProductVariant, { foreignKey: 'product_id' });
 Inventory.belongsTo(ProductVariant, { foreignKey: 'variant_id' });

@@ -13,6 +13,9 @@ export default function ShipmentPage() {
   const [quantity, setQuantity] = useState('');
   const [dateReceived, setDateReceived] = useState(() => new Date().toISOString().slice(0, 10));
 
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
   useEffect(() => { fetchData(); }, []);
 
   async function fetchData() {
@@ -40,6 +43,15 @@ export default function ShipmentPage() {
       showToast(err.response?.data?.message || 'Failed to record shipment.', 'error');
     }
   }
+
+  const filteredShipments = shipments.filter((s) => {
+    const d = new Date(s.date_received);
+    if (startDate && d < new Date(startDate)) return false;
+    if (endDate && d > new Date(endDate + 'T23:59:59')) return false;
+    return true;
+  });
+
+  function clearFilter() { setStartDate(''); setEndDate(''); }
 
   return (
     <Layout>
@@ -69,14 +81,21 @@ export default function ShipmentPage() {
       </form>
 
       <h3>Shipment History</h3>
-      {loading ? <p>Loading...</p> : shipments.length === 0 ? (
-        <p style={{ color: 'var(--color-text-muted)' }}>No shipments recorded yet.</p>
+      <div className="form-row" style={{ alignItems: 'center', marginBottom: 16 }}>
+        <label style={{ fontSize: 13 }}>From <input type="date" className="form-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
+        <label style={{ fontSize: 13 }}>To <input type="date" className="form-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
+        <button type="button" className="btn btn-sm" onClick={clearFilter}>Clear</button>
+        <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{filteredShipments.length} of {shipments.length} shown</span>
+      </div>
+
+      {loading ? <p>Loading...</p> : filteredShipments.length === 0 ? (
+        <p style={{ color: 'var(--color-text-muted)' }}>{shipments.length === 0 ? 'No shipments recorded yet.' : 'No shipments in this date range.'}</p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
             <thead><tr><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Date Received</th></tr></thead>
             <tbody>
-              {shipments.map((s) => (
+              {filteredShipments.map((s) => (
                 <tr key={s.shipment_id}>
                   <td>{s.ProductVariant?.Product?.product_name}</td>
                   <td>{s.ProductVariant?.color}</td>

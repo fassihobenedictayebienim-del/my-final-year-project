@@ -17,11 +17,12 @@ const NAV_BY_ROLE = {
     { to: '/reports', label: 'Reports', icon: '📈' },
   ],
   store_manager: [
-    { to: '/store', label: 'Dashboard', icon: '📊' },
-    { to: '/store/requests', label: 'Requests', icon: '📋' },
-    { to: '/store/sales', label: 'Sales', icon: '🛒' },
-    { to: '/reports', label: 'Reports', icon: '📈' },
-  ],
+  { to: '/store', label: 'Dashboard', icon: '📊' },
+  { to: '/store/inventory', label: 'My Inventory', icon: '📦' },
+  { to: '/store/requests', label: 'Requests', icon: '📋' },
+  { to: '/store/sales', label: 'Sales', icon: '🛒' },
+  { to: '/reports', label: 'Reports', icon: '📈' },
+],
 };
 
 export default function Layout({ children }) {

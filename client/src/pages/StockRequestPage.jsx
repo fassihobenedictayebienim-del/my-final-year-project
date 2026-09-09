@@ -12,6 +12,9 @@ export default function StockRequestPage() {
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('');
 
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+
   useEffect(() => { fetchData(); }, []);
 
   async function fetchData() {
@@ -53,6 +56,15 @@ export default function StockRequestPage() {
   }
 
   const selectedRow = warehouseStock.find((r) => String(r.variant_id) === String(variantId));
+
+  const filteredRequests = requests.filter((r) => {
+    const d = new Date(r.request_date);
+    if (startDate && d < new Date(startDate)) return false;
+    if (endDate && d > new Date(endDate + 'T23:59:59')) return false;
+    return true;
+  });
+
+  function clearFilter() { setStartDate(''); setEndDate(''); }
 
   return (
     <Layout>
@@ -98,14 +110,21 @@ export default function StockRequestPage() {
       </form>
 
       <h3>Past Requests + Status</h3>
-      {loading ? <p>Loading...</p> : requests.length === 0 ? (
-        <p style={{ color: 'var(--color-text-muted)' }}>No requests yet.</p>
+      <div className="form-row" style={{ alignItems: 'center', marginBottom: 16 }}>
+        <label style={{ fontSize: 13 }}>From <input type="date" className="form-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
+        <label style={{ fontSize: 13 }}>To <input type="date" className="form-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
+        <button type="button" className="btn btn-sm" onClick={clearFilter}>Clear</button>
+        <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{filteredRequests.length} of {requests.length} shown</span>
+      </div>
+
+      {loading ? <p>Loading...</p> : filteredRequests.length === 0 ? (
+        <p style={{ color: 'var(--color-text-muted)' }}>{requests.length === 0 ? 'No requests yet.' : 'No requests in this date range.'}</p>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
             <thead><tr><th>ID</th><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>
-              {requests.map((r) => (
+              {filteredRequests.map((r) => (
                 <tr key={r.request_id}>
                   <td>{r.request_id}</td>
                   <td>{r.ProductVariant?.Product?.product_name}</td>
