@@ -22,6 +22,7 @@ CREATE TABLE users (
   user_id       INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   name          VARCHAR(100) NOT NULL,
   email         VARCHAR(150) NOT NULL UNIQUE,
+  phone         VARCHAR(20) NULL,
   password      VARCHAR(255) NOT NULL,
   role          ENUM('administrator', 'warehouse_manager', 'store_manager') NOT NULL,
   warehouse_id  INT UNSIGNED NULL,

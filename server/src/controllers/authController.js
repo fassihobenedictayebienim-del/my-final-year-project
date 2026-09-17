@@ -6,17 +6,13 @@ const logActivity = require('../utils/activityLogger');
 async function login(req, res) {
   try {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required.' });
-    }
+    if (!email || !password) return res.status(400).json({ message: 'Email and password are required.' });
+
     const user = await User.findOne({ where: { email } });
-    if (!user) {
-      return res.status(401).json({ message: 'Invalid email or password.' });
-    }
+    if (!user) return res.status(401).json({ message: 'Invalid email or password.' });
+
     const passwordMatches = await bcrypt.compare(password, user.password);
-    if (!passwordMatches) {
-      return res.status(401).json({ message: 'Invalid email or password.' });
-    }
+    if (!passwordMatches) return res.status(401).json({ message: 'Invalid email or password.' });
 
     const token = jwt.sign(
       { user_id: user.user_id, role: user.role, warehouse_id: user.warehouse_id, store_id: user.store_id },
@@ -42,17 +38,28 @@ async function login(req, res) {
 
 async function register(req, res) {
   try {
-    const { name, email, password, role, warehouse_id, store_id } = req.body;
+    const { name, email, phone, password, role, warehouse_id, store_id } = req.body;
     if (!name || !email || !password || !role) {
       return res.status(400).json({ message: 'Name, email, password, and role are required.' });
     }
-    const existing = await User.findOne({ where: { email } });
-    if (existing) {
-      return res.status(409).json({ message: 'A user with this email already exists.' });
+    if (!['administrator', 'warehouse_manager', 'store_manager'].includes(role)) {
+      return res.status(400).json({ message: 'A valid role is required.' });
     }
+    if (password.length < 8) {
+      return res.status(400).json({ message: 'Password must be at least 8 characters.' });
+    }
+    if (role === 'warehouse_manager' && !Number.isInteger(Number(warehouse_id))) {
+      return res.status(400).json({ message: 'A warehouse manager must be assigned to a valid warehouse.' });
+    }
+    if (role === 'store_manager' && !Number.isInteger(Number(store_id))) {
+      return res.status(400).json({ message: 'A store manager must be assigned to a valid store.' });
+    }
+    const existing = await User.findOne({ where: { email } });
+    if (existing) return res.status(409).json({ message: 'A user with this email already exists.' });
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await User.create({
-      name, email, password: hashedPassword, role,
+      name, email, phone: phone || null, password: hashedPassword, role,
       warehouse_id: role === 'warehouse_manager' ? warehouse_id : null,
       store_id: role === 'store_manager' ? store_id : null,
     });
@@ -72,7 +79,7 @@ async function register(req, res) {
 async function getProfile(req, res) {
   try {
     const user = await User.findByPk(req.user.user_id, {
-      attributes: ['user_id', 'name', 'email', 'role', 'warehouse_id', 'store_id'],
+      attributes: ['user_id', 'name', 'email', 'phone', 'role', 'warehouse_id', 'store_id'],
     });
     if (!user) return res.status(404).json({ message: 'User not found.' });
     res.json({ user });
@@ -85,12 +92,9 @@ async function getProfile(req, res) {
 async function changePassword(req, res) {
   try {
     const { currentPassword, newPassword } = req.body;
-    if (!currentPassword || !newPassword) {
-      return res.status(400).json({ message: 'Current and new password are required.' });
-    }
-    if (newPassword.length < 8) {
-      return res.status(400).json({ message: 'New password must be at least 8 characters.' });
-    }
+    if (!currentPassword || !newPassword) return res.status(400).json({ message: 'Current and new password are required.' });
+    if (newPassword.length < 8) return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+
     const user = await User.findByPk(req.user.user_id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
 

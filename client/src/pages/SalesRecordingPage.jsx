@@ -12,6 +12,7 @@ export default function SalesRecordingPage() {
   const [variantId, setVariantId] = useState('');
   const [quantity, setQuantity] = useState('');
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Load sales data once when the page opens.
   useEffect(() => { fetchData(); }, []);
 
   async function fetchData() {
@@ -20,7 +21,7 @@ export default function SalesRecordingPage() {
       const [inventoryRes, salesRes] = await Promise.all([api.get('/inventory'), api.get('/sales')]);
       setStoreInventory(inventoryRes.data.inventory);
       setSales(salesRes.data.sales);
-    } catch (err) {
+    } catch (_err) {
       showToast('Failed to load data.', 'error');
     } finally {
       setLoading(false);
@@ -58,31 +59,44 @@ export default function SalesRecordingPage() {
       </div>
 
       <div className="stat-grid cols-2" style={{ marginBottom: 8 }}>
-        <div className="card"><p className="stat-label">Items Sold Today</p><p className="stat-value">{itemsSoldToday}</p></div>
-        <div className="card"><p className="stat-label">Revenue Today</p><p className="stat-value">GHS {totalToday.toFixed(2)}</p></div>
+        <div className="card"><p className="stat-label">🛒 Items Sold Today</p><p className="stat-value">{itemsSoldToday}</p></div>
+        <div className="card"><p className="stat-label">💰 Revenue Today</p><p className="stat-value">GHS {totalToday.toFixed(2)}</p></div>
       </div>
 
       <h3>Record Sale</h3>
       <form onSubmit={handleSubmit} className="form-card">
         <div className="form-row">
-          <select className="form-input" value={variantId} onChange={(e) => setVariantId(e.target.value)} required style={{ flex: 1 }}>
-            <option value="">Select colour / size</option>
-            {storeInventory.map((row) => (
-              <option key={row.variant_id} value={row.variant_id}>
-                {row.ProductVariant.Product.product_name} — {row.ProductVariant.color} / {row.ProductVariant.size} — {row.quantity} in stock
-              </option>
-            ))}
-          </select>
-          <input className="form-input" type="number" placeholder="Quantity sold" value={quantity} onChange={(e) => setQuantity(e.target.value)} required min="1" style={{ width: 140 }} />
+          <div style={{ flex: 1 }}>
+            <label className="form-label">Colour / Size</label>
+            <select className="form-input" value={variantId} onChange={(e) => setVariantId(e.target.value)} required style={{ width: '100%' }}>
+              <option value="">Select colour / size</option>
+              {storeInventory.map((row) => (
+                <option key={row.variant_id} value={row.variant_id}>
+                  {row.ProductVariant.Product.product_name} — {row.ProductVariant.color} / {row.ProductVariant.size} — {row.quantity} in stock
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="form-label">Quantity Sold</label>
+            <input className="form-input" type="number" placeholder="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} required min="1" style={{ width: 140 }} />
+          </div>
         </div>
         {selectedRow && <p className="form-hint">{selectedRow.quantity} unit(s) available at your store for this variant.</p>}
-        {estimatedTotal !== null && <p style={{ fontWeight: 700, margin: '0 0 12px' }}>Estimated total: GHS {estimatedTotal}</p>}
-        <button type="submit" className="btn btn-primary">Record Sale</button>
+        {estimatedTotal !== null && (
+          <div className="card" style={{ marginBottom: 14, padding: '10px 16px', display: 'inline-block' }}>
+            <p className="stat-label" style={{ margin: 0 }}>Estimated Total</p>
+            <p className="stat-value" style={{ fontSize: 20, margin: '2px 0 0' }}>GHS {estimatedTotal}</p>
+          </div>
+        )}
+        <div><button type="submit" className="btn btn-primary">Record Sale</button></div>
       </form>
 
       <h3>Today's Sales</h3>
-      {loading ? <p>Loading...</p> : salesToday.length === 0 ? (
-        <p style={{ color: 'var(--color-text-muted)' }}>No sales recorded yet today.</p>
+      {loading ? (
+        <div className="loading-row"><span className="spinner" style={{ borderTopColor: 'var(--color-primary)', borderColor: 'var(--color-border)' }} /> Loading...</div>
+      ) : salesToday.length === 0 ? (
+        <div className="empty-state"><span className="empty-state-icon">🛒</span>No sales recorded yet today.</div>
       ) : (
         <div className="table-wrap">
           <table className="data-table">

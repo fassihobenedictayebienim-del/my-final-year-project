@@ -24,7 +24,7 @@ export default function WarehouseDashboard() {
     try {
       const response = await api.get('/dashboard/warehouse', { params: { days: range } });
       setData(response.data);
-    } catch (err) {
+    } catch (_err) {
       setError('Failed to load dashboard.');
     }
   }
@@ -58,24 +58,32 @@ export default function WarehouseDashboard() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
-      {!data ? <p>Loading...</p> : (
+      {!data ? (
+        <div className="loading-row"><span className="spinner" style={{ borderTopColor: 'var(--color-primary)', borderColor: 'var(--color-border)' }} /> Loading dashboard...</div>
+      ) : (
         <>
           <div className="stat-grid cols-3">
-            <div className="card"><p className="stat-label">Total Warehouse Stock</p><p className="stat-value">{data.kpis.total_warehouse_stock}</p></div>
-            <div className="card"><p className="stat-label">Warehouse Inventory Value</p><p className="stat-value">GHS {Number(data.kpis.warehouse_inventory_value).toFixed(2)}</p></div>
+            <div className="card"><p className="stat-label">📦 Total Warehouse Stock</p><p className="stat-value">{data.kpis.total_warehouse_stock}</p></div>
+            <div className="card"><p className="stat-label">💰 Warehouse Inventory Value</p><p className="stat-value">GHS {Number(data.kpis.warehouse_inventory_value).toFixed(2)}</p></div>
             <div className={`card ${data.kpis.pending_store_requests > 0 ? 'stat-card pending' : ''}`}>
-              <p className="stat-label">Pending Store Requests</p><p className="stat-value">{data.kpis.pending_store_requests}</p>
+              <p className="stat-label">📋 Pending Store Requests</p><p className="stat-value">{data.kpis.pending_store_requests}</p>
               {data.kpis.pending_store_requests > 0 && <Link to="/warehouse/requests">Review now &rarr;</Link>}
             </div>
             <div className={`card ${data.kpis.products_below_reorder > 0 ? 'stat-card alert' : ''}`}>
-              <p className="stat-label">Below Reorder Level</p><p className="stat-value">{data.kpis.products_below_reorder}</p>
+              <p className="stat-label">⚠️ Below Reorder Level</p><p className="stat-value">{data.kpis.products_below_reorder}</p>
               {data.kpis.products_below_reorder > 0 && <Link to="/warehouse/shipments">Record a shipment &rarr;</Link>}
             </div>
-            <div className="card"><p className="stat-label">Recent Transfers</p><p className="stat-value">{data.kpis.recent_transfers_count}</p></div>
+            <div className="card"><p className="stat-label">🚚 Recent Transfers</p><p className="stat-value">{data.kpis.recent_transfers_count}</p></div>
+            <div className={`card ${data.kpis.variants_needing_attention > 0 ? 'stat-card alert' : ''}`}>
+              <p className="stat-label">🎯 Variants Needing Attention</p>
+              <p className="stat-value">{data.kpis.variants_needing_attention}</p>
+              <p className="stat-sub">Individual colour/size problems</p>
+            </div>
           </div>
+          
 
           <div className="chart-card" style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
               <h3>Stock Movement (Received vs. Dispatched)</h3>
               <div className="range-tabs">
                 {RANGES.map((r) => (
@@ -91,9 +99,9 @@ export default function WarehouseDashboard() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
                   <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
+                  <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
                   <Legend wrapperStyle={{ fontSize: 12.5 }} />
-                  <Line type="monotone" dataKey="received" name="Received" stroke="#16a34a" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="received" name="Received" stroke="var(--color-success)" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="dispatched" name="Dispatched" stroke="var(--color-primary)" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -109,8 +117,8 @@ export default function WarehouseDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis dataKey="store_name" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Bar dataKey="quantity" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
+                    <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Bar dataKey="quantity" fill="var(--color-primary)" radius={[4, 4, 0, 0]} maxBarSize={48} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -123,8 +131,8 @@ export default function WarehouseDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis type="number" tick={{ fontSize: 11 }} />
                     <YAxis type="category" dataKey="product_name" tick={{ fontSize: 11 }} width={110} />
-                    <Tooltip formatter={(v) => [v, 'Units moved']} />
-                    <Bar dataKey="quantity_moved" fill="#16a34a" radius={[0, 4, 4, 0]} />
+                    <Tooltip formatter={(v) => [v, 'Units moved']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Bar dataKey="quantity_moved" fill="var(--color-success)" radius={[0, 4, 4, 0]} maxBarSize={22} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -135,7 +143,9 @@ export default function WarehouseDashboard() {
             <div className="chart-card"><h3>Stock Status</h3><StatusPie inStock={data.stock_status.in_stock} lowStock={data.stock_status.low_stock} outOfStock={data.stock_status.out_of_stock} /></div>
             <div className="chart-card">
               <h3>Recent Stock Transfers</h3>
-              {data.recent_transfers.length === 0 ? <p style={{ color: 'var(--color-text-muted)' }}>No transfers yet.</p> : (
+              {data.recent_transfers.length === 0 ? (
+                <div className="empty-state"><span className="empty-state-icon">🚚</span>No transfers yet.</div>
+              ) : (
                 <table className="data-table">
                   <thead><tr><th>Store</th><th>Qty</th><th>Status</th><th>Date</th></tr></thead>
                   <tbody>
@@ -148,9 +158,32 @@ export default function WarehouseDashboard() {
             </div>
           </div>
 
+                    <h3>Inventory Alerts</h3>
+          {data.variant_alerts.length === 0 ? (
+            <div className="empty-state" style={{ marginBottom: 24 }}><span className="empty-state-icon">✅</span>No variant-level stock problems right now.</div>
+          ) : (
+            <div className="table-wrap" style={{ marginBottom: 24 }}>
+              <table className="data-table">
+                <thead><tr><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody>
+                  {data.variant_alerts.map((v) => (
+                    <tr key={v.variant_id}>
+                      <td>{v.product_name}</td>
+                      <td>{v.color}</td>
+                      <td>{v.size}</td>
+                      <td>{v.quantity}</td>
+                      <td>{v.status === 'out' ? <span className="stock-badge out-of-stock">🔴 Out of Stock</span> : <span className="stock-badge low-stock">🟠 Low Stock</span>}</td>
+                      <td><Link to="/warehouse/shipments" className="btn btn-sm">Record Shipment</Link></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <h3>Warehouse Low-Stock Products</h3>
           {data.warehouse_low_stock_products.length === 0 ? (
-            <p style={{ color: 'var(--color-text-muted)' }}>Everything is above its reorder level. 🎉</p>
+            <div className="empty-state"><span className="empty-state-icon">✅</span>Everything is above its reorder level.</div>
           ) : (
             <div className="table-wrap">
               <table className="data-table">

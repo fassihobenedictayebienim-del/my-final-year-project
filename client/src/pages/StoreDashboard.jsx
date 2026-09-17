@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
@@ -23,7 +24,7 @@ export default function StoreDashboard() {
     try {
       const response = await api.get('/dashboard/store', { params: { days: range } });
       setData(response.data);
-    } catch (err) {
+    } catch (_err) {
       setError('Failed to load dashboard.');
     }
   }
@@ -34,10 +35,7 @@ export default function StoreDashboard() {
     return <span className="stock-badge in-stock">🟢 In Stock</span>;
   }
 
-  function startEditReorder(product_id, currentLevel) {
-    setEditingReorder(product_id);
-    setReorderValue(currentLevel);
-  }
+  function startEditReorder(product_id, currentLevel) { setEditingReorder(product_id); setReorderValue(currentLevel); }
 
   async function saveReorderLevel(product_id) {
     try {
@@ -57,32 +55,37 @@ export default function StoreDashboard() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
-      {!data ? <p>Loading...</p> : (
+      {!data ? (
+        <div className="loading-row"><span className="spinner" style={{ borderTopColor: 'var(--color-primary)', borderColor: 'var(--color-border)' }} /> Loading dashboard...</div>
+      ) : (
         <>
           <div className="stat-grid cols-3">
-            <div className="card"><p className="stat-label">Current Store Stock</p><p className="stat-value">{data.kpis.current_store_stock}</p></div>
-            <div className="card"><p className="stat-label">Today's Sales</p><p className="stat-value">{data.kpis.todays_sales_count}</p></div>
-            <div className="card"><p className="stat-label">Today's Revenue</p><p className="stat-value">GHS {Number(data.kpis.todays_revenue).toFixed(2)}</p></div>
-            <div className={`card ${data.kpis.low_stock_products_count > 0 ? 'stat-card alert' : ''}`}><p className="stat-label">Low-Stock Products</p><p className="stat-value">{data.kpis.low_stock_products_count}</p></div>
-            <div className={`card ${data.kpis.pending_stock_requests > 0 ? 'stat-card pending' : ''}`}><p className="stat-label">Pending Requests</p><p className="stat-value">{data.kpis.pending_stock_requests}</p></div>
+            <div className="card"><p className="stat-label">📦 Current Store Stock</p><p className="stat-value">{data.kpis.current_store_stock}</p></div>
+            <div className="card"><p className="stat-label">🛒 Today's Sales</p><p className="stat-value">{data.kpis.todays_sales_count}</p></div>
+            <div className="card"><p className="stat-label">💰 Today's Revenue</p><p className="stat-value">GHS {Number(data.kpis.todays_revenue).toFixed(2)}</p></div>
+            <div className={`card ${data.kpis.low_stock_products_count > 0 ? 'stat-card alert' : ''}`}><p className="stat-label">⚠️ Low-Stock Products</p><p className="stat-value">{data.kpis.low_stock_products_count}</p></div>
+            <div className={`card ${data.kpis.pending_stock_requests > 0 ? 'stat-card pending' : ''}`}><p className="stat-label">📋 Pending Requests</p><p className="stat-value">{data.kpis.pending_stock_requests}</p></div>
+            <div className={`card ${data.kpis.variants_needing_attention > 0 ? 'stat-card alert' : ''}`}>
+              <p className="stat-label">🎯 Variants Needing Attention</p>
+              <p className="stat-value">{data.kpis.variants_needing_attention}</p>
+              <p className="stat-sub">Individual colour/size problems</p>
+            </div>
           </div>
 
           <div className="chart-card" style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
               <h3>Sales Trend</h3>
               <div className="range-tabs">
-                {RANGES.map((r) => (
-                  <button key={r.value} className={`range-tab ${days === r.value ? 'active' : ''}`} onClick={() => setDays(r.value)}>{r.label}</button>
-                ))}
+                {RANGES.map((r) => <button key={r.value} className={`range-tab ${days === r.value ? 'active' : ''}`} onClick={() => setDays(r.value)}>{r.label}</button>)}
               </div>
             </div>
             {data.sales_trend.every((d) => d.revenue === 0) ? <div className="chart-empty">No sales recorded in this period.</div> : (
-              <ResponsiveContainer width="100%" height={260}>
+              <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={data.sales_trend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
                   <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v) => [`GHS ${v}`, 'Revenue']} />
+                  <Tooltip formatter={(v) => [`GHS ${v}`, 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
                   <Line type="monotone" dataKey="revenue" stroke="var(--color-primary)" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -98,8 +101,8 @@ export default function StoreDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis type="number" tick={{ fontSize: 11 }} />
                     <YAxis type="category" dataKey="product_name" tick={{ fontSize: 11 }} width={110} />
-                    <Tooltip formatter={(v) => [v, 'Units sold']} />
-                    <Bar dataKey="quantity_sold" fill="var(--color-primary)" radius={[0, 4, 4, 0]} />
+                    <Tooltip formatter={(v) => [v, 'Units sold']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Bar dataKey="quantity_sold" fill="var(--color-primary)" radius={[0, 4, 4, 0]} maxBarSize={22} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -112,8 +115,8 @@ export default function StoreDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis dataKey="product_name" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
                     <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Bar dataKey="quantity" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                    <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Bar dataKey="quantity" fill="var(--color-success)" radius={[4, 4, 0, 0]} maxBarSize={40} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -125,13 +128,36 @@ export default function StoreDashboard() {
             <StatusPie inStock={data.stock_status.in_stock} lowStock={data.stock_status.low_stock} outOfStock={data.stock_status.out_of_stock} />
           </div>
 
+          <h3>Inventory Alerts</h3>
+          {data.variant_alerts.length === 0 ? (
+            <div className="empty-state" style={{ marginBottom: 24 }}><span className="empty-state-icon">✅</span>No variant-level stock problems right now.</div>
+          ) : (
+            <div className="table-wrap" style={{ marginBottom: 24 }}>
+              <table className="data-table">
+                <thead><tr><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Status</th><th>Action</th></tr></thead>
+                <tbody>
+                  {data.variant_alerts.map((v) => (
+                    <tr key={v.variant_id}>
+                      <td>{v.product_name}</td>
+                      <td>{v.color}</td>
+                      <td>{v.size}</td>
+                      <td>{v.quantity}</td>
+                      <td>{v.status === 'out' ? <span className="stock-badge out-of-stock">🔴 Out of Stock</span> : <span className="stock-badge low-stock">🟠 Low Stock</span>}</td>
+                      <td><Link to="/store/inventory" className="btn btn-sm">View Inventory</Link></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <h3>Products Below Store Reorder Level</h3>
           {data.products_below_reorder.length === 0 ? (
-            <p style={{ color: 'var(--color-text-muted)' }}>Everything is above your reorder level. 🎉</p>
+            <div className="empty-state"><span className="empty-state-icon">✅</span>Everything is above your reorder level.</div>
           ) : (
             <div className="table-wrap">
               <table className="data-table">
-                <thead><tr><th>Product</th><th>Total Stock</th><th>Reorder Level</th><th>Status</th><th>Low Variants</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Product</th><th>Total Stock</th><th>Reorder Level</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody>
                   {data.products_below_reorder.map((row) => (
                     <tr key={row.product_id}>
@@ -141,9 +167,6 @@ export default function StoreDashboard() {
                         <input className="form-input" type="number" min="0" value={reorderValue} onChange={(e) => setReorderValue(e.target.value)} style={{ width: 80 }} />
                       ) : row.reorder_level}</td>
                       <td>{statusBadge(row.status)}</td>
-                      <td>{row.low_variants.length === 0 ? '—' : row.low_variants.map((v) => (
-                        <span key={v.variant_id} className={`stock-badge ${v.flag === 'out' ? 'out-of-stock' : 'low-stock'}`} style={{ marginRight: 4 }}>{v.color}/{v.size}: {v.quantity}</span>
-                      ))}</td>
                       <td>{editingReorder === row.product_id ? (
                         <div className="action-buttons">
                           <button className="btn btn-sm btn-success" onClick={() => saveReorderLevel(row.product_id)}>Save</button>

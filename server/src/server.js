@@ -3,19 +3,22 @@ const cors = require('cors');
 require('dotenv').config();
 
 const { sequelize, testConnection } = require('./config/db');
-const authRoutes = require('./routes/authRoutes');
-const productRoutes = require('./routes/productRoutes');
+
 const Product = require('./models/Product');
 const ProductVariant = require('./models/ProductVariant');
 const ProductLocationSetting = require('./models/ProductLocationSetting');
+const Inventory = require('./models/Inventory');
 const Shipment = require('./models/Shipment');
-const shipmentRoutes = require('./routes/shipmentRoutes');
+const ShipmentBatch = require('./models/ShipmentBatch');
 const StockRequest = require('./models/StockRequest');
-const stockRequestRoutes = require('./routes/stockRequestRoutes');
 const StockTransfer = require('./models/StockTransfer');
 const Sale = require('./models/Sale');
+
+const authRoutes = require('./routes/authRoutes');
+const productRoutes = require('./routes/productRoutes');
+const shipmentRoutes = require('./routes/shipmentRoutes');
+const stockRequestRoutes = require('./routes/stockRequestRoutes');
 const saleRoutes = require('./routes/saleRoutes');
-const Inventory = require('./models/Inventory');
 const inventoryRoutes = require('./routes/inventoryRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const userRoutes = require('./routes/userRoutes');
@@ -24,9 +27,34 @@ const activityLogRoutes = require('./routes/activityLogRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+const allowedOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin(origin, callback) {
+    // Requests without an Origin header include tools such as health checks.
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origin is not allowed by CORS.'));
+  },
+}));
 app.use(express.json());
+
+ProductVariant.belongsTo(Product, { foreignKey: 'product_id' });
+Product.hasMany(ProductVariant, { foreignKey: 'product_id' });
+
+Inventory.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
+
+Shipment.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
+ShipmentBatch.hasMany(Shipment, { foreignKey: 'shipment_batch_id' });
+Shipment.belongsTo(ShipmentBatch, { foreignKey: 'shipment_batch_id' });
+
+StockRequest.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
+Sale.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
+StockTransfer.belongsTo(StockRequest, { foreignKey: 'request_id' });
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Server is running' });
@@ -44,19 +72,11 @@ app.use('/api/locations', locationRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 
-const PORT = process.env.PORT || 5000;
-
-ProductVariant.belongsTo(Product, { foreignKey: 'product_id' });
-Product.hasMany(ProductVariant, { foreignKey: 'product_id' });
-Inventory.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
-Shipment.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
-StockRequest.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
-Sale.belongsTo(ProductVariant, { foreignKey: 'variant_id' });
-StockTransfer.belongsTo(StockRequest, { foreignKey: 'request_id' });
-
 app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
+
   await testConnection();
+
   try {
     await sequelize.sync();
     console.log('Models synced with database.');

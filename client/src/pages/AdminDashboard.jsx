@@ -13,16 +13,16 @@ export default function AdminDashboard() {
   const [error, setError] = useState('');
   const [days, setDays] = useState(30);
 
-  useEffect(() => { fetchDashboard(days); }, [days]);
-
   async function fetchDashboard(range) {
     try {
       const response = await api.get('/dashboard/admin', { params: { days: range } });
       setData(response.data);
-    } catch (err) {
+    } catch {
       setError('Failed to load dashboard.');
     }
   }
+
+  useEffect(() => { fetchDashboard(days); }, [days]);
 
   return (
     <Layout>
@@ -31,19 +31,33 @@ export default function AdminDashboard() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
-      {!data ? <p>Loading...</p> : (
+      {!data ? (
+        <div className="loading-row"><span className="spinner" style={{ borderTopColor: 'var(--color-primary)', borderColor: 'var(--color-border)' }} /> Loading dashboard...</div>
+      ) : (
         <>
           <div className="stat-grid cols-3">
-            <div className="card"><p className="stat-label">Total Products</p><p className="stat-value">{data.kpis.total_products}</p></div>
-            <div className="card"><p className="stat-label">Total Inventory Qty</p><p className="stat-value">{data.kpis.total_inventory_quantity}</p></div>
-            <div className="card"><p className="stat-label">Total Inventory Value</p><p className="stat-value">GHS {Number(data.kpis.total_inventory_value).toFixed(2)}</p></div>
-            <div className="card"><p className="stat-label">Total Sales</p><p className="stat-value">GHS {Number(data.kpis.total_sales).toFixed(2)}</p></div>
-            <div className="card"><p className="stat-label">Number of Stores</p><p className="stat-value">{data.kpis.number_of_stores}</p></div>
-            <div className={`card ${data.kpis.low_stock_count > 0 ? 'stat-card alert' : ''}`}><p className="stat-label">Low-Stock Products</p><p className="stat-value">{data.kpis.low_stock_count}</p></div>
+            <div className="card"><p className="stat-label">📦 Total Products</p><p className="stat-value">{data.kpis.total_products}</p></div>
+            <div className="card"><p className="stat-label">🔢 Total Inventory Qty</p><p className="stat-value">{data.kpis.total_inventory_quantity}</p></div>
+            <div className="card"><p className="stat-label">💰 Total Inventory Value</p><p className="stat-value">GHS {Number(data.kpis.total_inventory_value).toFixed(2)}</p></div>
+            <div className="card"><p className="stat-label">📈 Total Sales</p><p className="stat-value">GHS {Number(data.kpis.total_sales).toFixed(2)}</p></div>
+            <div className="card"><p className="stat-label">🏬 Number of Stores</p><p className="stat-value">{data.kpis.number_of_stores}</p></div>
+            <div className={`card ${data.kpis.low_stock_count > 0 ? 'stat-card alert' : ''}`}>
+              <p className="stat-label">⚠️ Low-Stock Products</p>
+              <p className="stat-value">{data.kpis.low_stock_count}</p>
+              {data.kpis.low_stock_count === 0 && <p className="stat-sub">All products healthy</p>}
+            </div>
+            <div className={`card ${data.kpis.out_of_stock_variants > 0 ? 'stat-card alert' : ''}`}>
+              <p className="stat-label">🔴 Out-of-Stock Variants</p>
+              <p className="stat-value">{data.kpis.out_of_stock_variants}</p>
+            </div>
+            <div className={`card ${data.kpis.variants_needing_attention > 0 ? 'stat-card alert' : ''}`}>
+              <p className="stat-label">🎯 Variants Needing Attention</p>
+              <p className="stat-value">{data.kpis.variants_needing_attention}</p>
+            </div>
           </div>
 
           <div className="chart-card" style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
               <h3>Overall Sales Trend</h3>
               <div className="range-tabs">
                 {RANGES.map((r) => (
@@ -59,7 +73,7 @@ export default function AdminDashboard() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
                   <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v) => [`GHS ${v}`, 'Revenue']} />
+                  <Tooltip formatter={(v) => [`GHS ${v}`, 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 12.5, border: '1px solid var(--color-border)' }} />
                   <Line type="monotone" dataKey="revenue" stroke="var(--color-primary)" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -75,8 +89,8 @@ export default function AdminDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis dataKey="store_name" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip formatter={(v) => [`GHS ${v}`, 'Revenue']} />
-                    <Bar dataKey="revenue" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
+                    <Tooltip formatter={(v) => [`GHS ${v}`, 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Bar dataKey="revenue" fill="var(--color-primary)" radius={[4, 4, 0, 0]} maxBarSize={48} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -89,8 +103,8 @@ export default function AdminDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis dataKey="location_name" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Bar dataKey="quantity" fill="#16a34a" radius={[4, 4, 0, 0]} />
+                    <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Bar dataKey="quantity" fill="var(--color-success)" radius={[4, 4, 0, 0]} maxBarSize={48} />
                   </BarChart>
                 </ResponsiveContainer>
               )}
@@ -106,8 +120,8 @@ export default function AdminDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis type="number" tick={{ fontSize: 11 }} />
                     <YAxis type="category" dataKey="product_name" tick={{ fontSize: 11 }} width={110} />
-                    <Tooltip formatter={(v) => [v, 'Units sold']} />
-                    <Bar dataKey="quantity_sold" fill="var(--color-primary)" radius={[0, 4, 4, 0]} />
+                    <Tooltip formatter={(v) => [v, 'Units sold']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Bar dataKey="quantity_sold" fill="var(--color-primary)" radius={[0, 4, 4, 0]} maxBarSize={22} />
                   </BarChart>
                 </ResponsiveContainer>
               )}

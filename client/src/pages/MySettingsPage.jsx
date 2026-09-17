@@ -14,7 +14,6 @@ export default function MySettingsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Admin-only state
   const [locations, setLocations] = useState({ warehouses: [], stores: [] });
   const [users, setUsers] = useState([]);
   const [loadingAdmin, setLoadingAdmin] = useState(isAdmin);
@@ -26,6 +25,7 @@ export default function MySettingsPage() {
   useEffect(() => {
     api.get('/auth/me').then((res) => setProfile(res.data.user)).catch(() => showToast('Failed to load profile.', 'error'));
     if (isAdmin) fetchAdminData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Load profile and administrator data once when the page opens.
   }, []);
 
   async function fetchAdminData() {
@@ -34,7 +34,7 @@ export default function MySettingsPage() {
       const [locRes, usersRes] = await Promise.all([api.get('/locations'), api.get('/users')]);
       setLocations(locRes.data);
       setUsers(usersRes.data.users);
-    } catch (err) {
+    } catch (_err) {
       showToast('Failed to load system settings.', 'error');
     } finally {
       setLoadingAdmin(false);
@@ -130,11 +130,11 @@ export default function MySettingsPage() {
       </div>
 
       {profile && (
-        <div className="card" style={{ marginBottom: 24 }}>
-          <p><strong>Name:</strong> {profile.name}</p>
-          <p><strong>Email:</strong> {profile.email}</p>
+        <div className="card" style={{ marginBottom: 24, maxWidth: 420 }}>
+          <p style={{ margin: '0 0 6px' }}><strong>Name:</strong> {profile.name}</p>
+          <p style={{ margin: '0 0 6px' }}><strong>Email:</strong> {profile.email}</p>
           <p style={{ marginBottom: 0 }}><strong>Role:</strong> {roleLabel(profile.role)}</p>
-          <p className="form-hint" style={{ marginTop: 8 }}>To change your name or email, contact your Administrator.</p>
+          <p className="form-hint" style={{ marginTop: 10, marginBottom: 0 }}>To change your name or email, contact your Administrator.</p>
         </div>
       )}
 
@@ -148,7 +148,9 @@ export default function MySettingsPage() {
 
       {isAdmin && (
         <>
-          {loadingAdmin ? <p>Loading system settings...</p> : (
+          {loadingAdmin ? (
+            <div className="loading-row"><span className="spinner" style={{ borderTopColor: 'var(--color-primary)', borderColor: 'var(--color-border)' }} /> Loading system settings...</div>
+          ) : (
             <>
               <h3>Warehouse</h3>
               <div className="table-wrap" style={{ marginBottom: 24 }}>

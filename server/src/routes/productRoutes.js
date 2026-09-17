@@ -2,13 +2,14 @@ const express = require('express');
 const router = express.Router();
 const {
   listProducts, getProduct, createProduct, updateProduct, deleteProduct,
-  listVariantsForProduct, addVariant, deleteVariant,
+  listVariantsForProduct, addVariant, deleteVariant, listAllVariants,
 } = require('../controllers/productController');
 const { authenticateToken, authorizeRoles } = require('../middleware/auth');
 
 router.use(authenticateToken);
 
 router.get('/', listProducts);
+router.get('/variants/all', authorizeRoles('administrator', 'warehouse_manager'), listAllVariants);
 router.get('/:id', getProduct);
 router.get('/:id/variants', listVariantsForProduct);
 

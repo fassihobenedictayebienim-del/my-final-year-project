@@ -6,7 +6,6 @@ const Shipment = require('../models/Shipment');
 const { sequelize } = require('../config/db');
 const logActivity = require('../utils/activityLogger');
 
-// GET /api/products — product-level list only (no variant/location detail)
 async function listProducts(req, res) {
   try {
     const products = await Product.findAll({ order: [['product_name', 'ASC']] });
@@ -28,8 +27,6 @@ async function getProduct(req, res) {
   }
 }
 
-// GET /api/products/:id/variants — all variants for a product, with this
-// user's own-location quantity attached (or all-location breakdown for admin)
 async function listVariantsForProduct(req, res) {
   try {
     const { id } = req.params;
@@ -47,11 +44,8 @@ async function listVariantsForProduct(req, res) {
     const result = variants.map((v) => {
       const rows = inventoryRows.filter((i) => i.variant_id === v.variant_id);
       return {
-        variant_id: v.variant_id,
-        color: v.color,
-        size: v.size,
+        variant_id: v.variant_id, color: v.color, size: v.size,
         inventory: rows.map((r) => ({ warehouse_id: r.warehouse_id, store_id: r.store_id, quantity: r.quantity })),
-        // convenience field for single-location roles
         quantity: rows.reduce((sum, r) => sum + r.quantity, 0),
       };
     });
@@ -63,10 +57,43 @@ async function listVariantsForProduct(req, res) {
   }
 }
 
-// POST /api/products — Warehouse Manager or Administrator only
-// Creates the product, its initial variants, and (if quantities are given)
-// the matching shipments + warehouse inventory rows, all as one transaction.
-// body: { product_id, product_name, unit_price, reorder_level, variants: [{color, size, quantity}] }
+// GET /api/products/variants/all — Warehouse Manager or Administrator only
+// Every variant in the ENTIRE catalog, including ones with zero stock
+// anywhere yet, so Record Shipment can bring in stock for a brand-new
+// variant. This is deliberately separate from /inventory (which only
+// shows variants that already have a stock row) so a newly-added
+// variant is never invisible to shipment recording.
+async function listAllVariants(req, res) {
+  try {
+    const variants = await ProductVariant.findAll({
+      include: [{ model: Product }],
+      order: [['product_id', 'ASC'], ['color', 'ASC'], ['size', 'ASC']],
+    });
+
+    const warehouse_id = req.user.warehouse_id;
+    const variantIds = variants.map((v) => v.variant_id);
+    const inventoryRows = warehouse_id && variantIds.length
+      ? await Inventory.findAll({ where: { warehouse_id, variant_id: variantIds } })
+      : [];
+    const quantityMap = {};
+    inventoryRows.forEach((r) => { quantityMap[r.variant_id] = r.quantity; });
+
+    const result = variants.map((v) => ({
+      variant_id: v.variant_id,
+      product_id: v.product_id,
+      product_name: v.Product.product_name,
+      color: v.color,
+      size: v.size,
+      quantity: quantityMap[v.variant_id] || 0,
+    }));
+
+    res.json({ variants: result });
+  } catch (error) {
+    console.error('List all variants error:', error);
+    res.status(500).json({ message: 'Something went wrong while fetching variants.' });
+  }
+}
+
 async function createProduct(req, res) {
   const t = await sequelize.transaction();
   try {
@@ -91,7 +118,6 @@ async function createProduct(req, res) {
       return res.status(409).json({ message: `A product with ID "${product_id}" already exists.` });
     }
 
-    // Reject duplicate colour+size pairs within the submitted batch itself
     const seen = new Set();
     for (const v of variants) {
       if (!v.color || !v.size) {
@@ -159,7 +185,6 @@ async function createProduct(req, res) {
   }
 }
 
-// PUT /api/products/:id — product-level fields only (name, price)
 async function updateProduct(req, res) {
   try {
     const product = await Product.findByPk(req.params.id);
@@ -206,9 +231,6 @@ async function deleteProduct(req, res) {
   }
 }
 
-// POST /api/products/:id/variants — Warehouse Manager or Administrator only
-// Adds a new colour/size variant to an existing product (no stock yet —
-// use Record Shipment to bring in stock for it afterward).
 async function addVariant(req, res) {
   try {
     const { id } = req.params;
@@ -226,14 +248,13 @@ async function addVariant(req, res) {
 
     await logActivity(req.user, 'VARIANT_ADDED', `Variant ${color}/${size} added to "${product.product_name}" (${id}).`);
 
-    res.status(201).json({ message: 'Variant added successfully.', variant });
+    res.status(201).json({ message: 'Variant added. Use Record Shipment to bring in stock for it.', variant });
   } catch (error) {
     console.error('Add variant error:', error);
     res.status(500).json({ message: 'Something went wrong while adding the variant.' });
   }
 }
 
-// DELETE /api/variants/:variantId — Warehouse Manager or Administrator only
 async function deleteVariant(req, res) {
   try {
     const variant = await ProductVariant.findByPk(req.params.variantId);
@@ -258,5 +279,5 @@ async function deleteVariant(req, res) {
 
 module.exports = {
   listProducts, getProduct, createProduct, updateProduct, deleteProduct,
-  listVariantsForProduct, addVariant, deleteVariant,
+  listVariantsForProduct, addVariant, deleteVariant, listAllVariants,
 };

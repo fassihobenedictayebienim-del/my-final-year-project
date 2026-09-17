@@ -20,7 +20,11 @@ async function createSale(req, res) {
     const variant = await ProductVariant.findByPk(variant_id, { include: [Product], transaction: t });
     if (!variant) { await t.rollback(); return res.status(404).json({ message: 'Variant not found.' }); }
 
-    const inventoryRow = await Inventory.findOne({ where: { variant_id, store_id }, transaction: t });
+    const inventoryRow = await Inventory.findOne({
+      where: { variant_id, store_id },
+      transaction: t,
+      lock: t.LOCK.UPDATE,
+    });
     if (!inventoryRow || inventoryRow.quantity < quantity) {
       await t.rollback();
       return res.status(400).json({

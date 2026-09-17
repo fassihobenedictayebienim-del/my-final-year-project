@@ -7,16 +7,17 @@ export default function ProductManagement() {
   const { showToast } = useToast();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const [showForm, setShowForm] = useState(false);
   const [productData, setProductData] = useState({ product_id: '', product_name: '', unit_price: '', reorder_level: '' });
   const [variantRows, setVariantRows] = useState([{ color: '', size: '', quantity: '' }]);
 
   const [expandedProduct, setExpandedProduct] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
   const [variantDetail, setVariantDetail] = useState({});
   const [newVariant, setNewVariant] = useState({ color: '', size: '' });
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Load products once when the page opens.
   useEffect(() => { fetchProducts(); }, []);
 
   async function fetchProducts() {
@@ -24,19 +25,15 @@ export default function ProductManagement() {
     try {
       const response = await api.get('/products');
       setProducts(response.data.products);
-    } catch (err) {
+    } catch (_err) {
       showToast('Failed to load products.', 'error');
     } finally {
       setLoading(false);
     }
   }
 
-  function addVariantRow() {
-    setVariantRows([...variantRows, { color: '', size: '', quantity: '' }]);
-  }
-  function removeVariantRow(index) {
-    setVariantRows(variantRows.filter((_, i) => i !== index));
-  }
+  function addVariantRow() { setVariantRows([...variantRows, { color: '', size: '', quantity: '' }]); }
+  function removeVariantRow(index) { setVariantRows(variantRows.filter((_, i) => i !== index)); }
   function updateVariantRow(index, field, value) {
     const updated = [...variantRows];
     updated[index][field] = value;
@@ -65,16 +62,13 @@ export default function ProductManagement() {
   }
 
   async function toggleExpand(product_id) {
-    if (expandedProduct === product_id) {
-      setExpandedProduct(null);
-      return;
-    }
+    if (expandedProduct === product_id) { setExpandedProduct(null); return; }
     setExpandedProduct(product_id);
     if (!variantDetail[product_id]) {
       try {
         const response = await api.get(`/products/${product_id}/variants`);
         setVariantDetail((prev) => ({ ...prev, [product_id]: response.data.variants }));
-      } catch (err) {
+      } catch (_err) {
         showToast('Failed to load variants.', 'error');
       }
     }
@@ -125,6 +119,11 @@ export default function ProductManagement() {
     return <span className="stock-badge in-stock">🟢 OK</span>;
   }
 
+  const filteredProducts = products.filter((p) =>
+    p.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    p.product_id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <Layout>
       <div className="page-header">
@@ -140,15 +139,28 @@ export default function ProductManagement() {
       {showForm && (
         <form onSubmit={handleCreateProduct} className="form-card">
           <div className="form-row">
-            <input className="form-input" placeholder="Product ID (e.g. P1021)" value={productData.product_id} onChange={(e) => setProductData({ ...productData, product_id: e.target.value })} required style={{ width: 200 }} />
-            <input className="form-input" placeholder="Product name" value={productData.product_name} onChange={(e) => setProductData({ ...productData, product_name: e.target.value })} required style={{ flex: 1 }} />
+            <div>
+              <label className="form-label">Product ID</label>
+              <input className="form-input" placeholder="e.g. P1021" value={productData.product_id} onChange={(e) => setProductData({ ...productData, product_id: e.target.value })} required style={{ width: 200 }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">Product Name</label>
+              <input className="form-input" placeholder="e.g. Wisteria" value={productData.product_name} onChange={(e) => setProductData({ ...productData, product_name: e.target.value })} required style={{ width: '100%' }} />
+            </div>
           </div>
           <div className="form-row">
-            <input className="form-input" type="number" step="0.01" placeholder="Unit price (GHS)" value={productData.unit_price} onChange={(e) => setProductData({ ...productData, unit_price: e.target.value })} required />
-            <input className="form-input" type="number" placeholder="Warehouse reorder level" value={productData.reorder_level} onChange={(e) => setProductData({ ...productData, reorder_level: e.target.value })} />
+            <div>
+              <label className="form-label">Unit Price (GHS)</label>
+              <input className="form-input" type="number" step="0.01" placeholder="0.00" value={productData.unit_price} onChange={(e) => setProductData({ ...productData, unit_price: e.target.value })} required />
+            </div>
+            <div>
+              <label className="form-label">Warehouse Reorder Level</label>
+              <input className="form-input" type="number" placeholder="0" value={productData.reorder_level} onChange={(e) => setProductData({ ...productData, reorder_level: e.target.value })} />
+            </div>
           </div>
 
-          <p className="form-hint" style={{ marginTop: 16 }}><strong>Variants received</strong> — add one row per colour/size combination physically counted from this shipment.</p>
+          <h3 style={{ marginTop: 20 }}>Variants Received</h3>
+          <p className="form-hint" style={{ marginTop: -8 }}>Add one row per colour/size combination physically counted from this shipment.</p>
 
           {variantRows.map((row, i) => (
             <div className="form-row" key={i}>
@@ -160,33 +172,37 @@ export default function ProductManagement() {
               )}
             </div>
           ))}
-          <button type="button" className="btn btn-sm" onClick={addVariantRow} style={{ marginBottom: 12 }}>+ Add Variant Row</button>
+          <button type="button" className="btn btn-sm btn-secondary" onClick={addVariantRow} style={{ marginBottom: 14 }}>+ Add Variant Row</button>
 
-          <p style={{ fontWeight: 700, margin: '4px 0 14px' }}>Total pairs from variants: {totalFromVariants}</p>
+          <p style={{ fontWeight: 700, margin: '0 0 16px' }}>Total pairs from variants: {totalFromVariants}</p>
 
           <button type="submit" className="btn btn-primary">Save Product</button>
         </form>
       )}
 
-            <div className="form-row" style={{ marginBottom: 16 }}>
+      <div className="form-row" style={{ marginBottom: 16 }}>
         <input
-             className="form-input"
-             placeholder="Search by product name or ID..."
-             value={searchTerm}
-             onChange={(e) => setSearchTerm(e.target.value)}
-             style={{ width: '100%', maxWidth: 420 }}
+          className="form-input"
+          placeholder="Search by product name or ID..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{ width: '100%', maxWidth: 420 }}
         />
       </div>
 
-      {loading ? <p>Loading products...</p> : (
+      {loading ? (
+        <div className="loading-row"><span className="spinner" style={{ borderTopColor: 'var(--color-primary)', borderColor: 'var(--color-border)' }} /> Loading products...</div>
+      ) : filteredProducts.length === 0 ? (
+        <div className="empty-state">
+          <span className="empty-state-icon">📦</span>
+          {products.length === 0 ? 'No products yet. Click "+ Add New Product" to get started.' : 'No products match your search.'}
+        </div>
+      ) : (
         <div className="table-wrap">
           <table className="data-table">
             <thead><tr><th>Product ID</th><th>Name</th><th>Unit Price</th><th>Actions</th></tr></thead>
             <tbody>
-              {products.filter((p) =>
-                p.product_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                p.product_id.toLowerCase().includes(searchTerm.toLowerCase())
-              ).map((p) => (
+              {filteredProducts.map((p) => (
                 <>
                   <tr key={p.product_id}>
                     <td className="mono">{p.product_id}</td>
@@ -204,7 +220,9 @@ export default function ProductManagement() {
                   {expandedProduct === p.product_id && (
                     <tr>
                       <td colSpan={4} style={{ background: 'var(--color-bg)', padding: 16 }}>
-                        {!variantDetail[p.product_id] ? <p>Loading variants...</p> : (
+                        {!variantDetail[p.product_id] ? (
+                          <div className="loading-row"><span className="spinner" style={{ borderTopColor: 'var(--color-primary)', borderColor: 'var(--color-border)' }} /> Loading variants...</div>
+                        ) : (
                           <>
                             <table className="data-table" style={{ marginBottom: 12 }}>
                               <thead><tr><th>Colour</th><th>Size</th><th>Quantity (your location)</th><th>Status</th><th>Actions</th></tr></thead>

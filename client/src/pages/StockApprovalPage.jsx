@@ -10,7 +10,9 @@ export default function StockApprovalPage() {
 
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [expandedDate, setExpandedDate] = useState(null);
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Load requests once when the page opens.
   useEffect(() => { fetchRequests(); }, []);
 
   async function fetchRequests() {
@@ -18,7 +20,7 @@ export default function StockApprovalPage() {
     try {
       const response = await api.get('/stock-requests');
       setRequests(response.data.requests);
-    } catch (err) {
+    } catch (_err) {
       showToast('Failed to load requests.', 'error');
     } finally {
       setLoading(false);
@@ -57,6 +59,17 @@ export default function StockApprovalPage() {
 
   function clearFilter() { setStartDate(''); setEndDate(''); }
 
+  function groupByDate(items) {
+    const byDate = {};
+    for (const r of items) {
+      const dateKey = new Date(r.request_date).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+      if (!byDate[dateKey]) byDate[dateKey] = [];
+      byDate[dateKey].push(r);
+    }
+    return Object.entries(byDate).sort((a, b) => new Date(b[1][0].request_date) - new Date(a[1][0].request_date));
+  }
+  const historyByDate = groupByDate(filteredHistory);
+
   return (
     <Layout>
       <div className="page-header">
@@ -67,8 +80,10 @@ export default function StockApprovalPage() {
       </div>
 
       <h3>Pending Requests</h3>
-      {loading ? <p>Loading...</p> : pendingRequests.length === 0 ? (
-        <p style={{ color: 'var(--color-text-muted)' }}>No pending requests.</p>
+      {loading ? (
+        <div className="loading-row"><span className="spinner" style={{ borderTopColor: 'var(--color-primary)', borderColor: 'var(--color-border)' }} /> Loading requests...</div>
+      ) : pendingRequests.length === 0 ? (
+        <div className="empty-state" style={{ marginBottom: 24 }}><span className="empty-state-icon">✅</span>No pending requests.</div>
       ) : (
         <div className="table-wrap" style={{ marginBottom: 24 }}>
           <table className="data-table">
@@ -97,30 +112,54 @@ export default function StockApprovalPage() {
       )}
 
       <h3>Request History</h3>
-      <div className="form-row" style={{ alignItems: 'center', marginBottom: 16 }}>
-        <label style={{ fontSize: 13 }}>From <input type="date" className="form-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></label>
-        <label style={{ fontSize: 13 }}>To <input type="date" className="form-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></label>
-        <button type="button" className="btn btn-sm" onClick={clearFilter}>Clear</button>
-        <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>{filteredHistory.length} of {otherRequests.length} shown</span>
+      <div className="form-row" style={{ alignItems: 'flex-end', marginBottom: 16 }}>
+        <div><label className="form-label">From</label><input type="date" className="form-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} /></div>
+        <div><label className="form-label">To</label><input type="date" className="form-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} /></div>
+        <button type="button" className="btn btn-sm btn-secondary" onClick={clearFilter}>Clear</button>
+        <span style={{ fontSize: 13, color: 'var(--color-text-muted)', alignSelf: 'center' }}>{filteredHistory.length} of {otherRequests.length} shown</span>
       </div>
 
-      {filteredHistory.length === 0 ? (
-        <p style={{ color: 'var(--color-text-muted)' }}>{otherRequests.length === 0 ? 'No history yet.' : 'No history in this date range.'}</p>
+      {historyByDate.length === 0 ? (
+        <div className="empty-state"><span className="empty-state-icon">📋</span>{otherRequests.length === 0 ? 'No history yet.' : 'No history in this date range.'}</div>
       ) : (
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>ID</th><th>Store</th><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Status</th></tr></thead>
+            <thead><tr><th>Date</th><th>Requests</th><th>Action</th></tr></thead>
             <tbody>
-              {filteredHistory.map((r) => (
-                <tr key={r.request_id}>
-                  <td>{r.request_id}</td>
-                  <td>Store {r.store_id}</td>
-                  <td>{r.ProductVariant?.Product?.product_name}</td>
-                  <td>{r.ProductVariant?.color}</td>
-                  <td>{r.ProductVariant?.size}</td>
-                  <td>{r.quantity}</td>
-                  <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
-                </tr>
+              {historyByDate.map(([dateLabel, dayRequests]) => (
+                <>
+                  <tr key={dateLabel}>
+                    <td>{dateLabel}</td>
+                    <td>{dayRequests.length} request{dayRequests.length !== 1 ? 's' : ''}</td>
+                    <td>
+                      <button className="btn btn-sm" onClick={() => setExpandedDate(expandedDate === dateLabel ? null : dateLabel)}>
+                        {expandedDate === dateLabel ? 'Hide' : 'View Requests'}
+                      </button>
+                    </td>
+                  </tr>
+                  {expandedDate === dateLabel && (
+                    <tr>
+                      <td colSpan={3} style={{ background: 'var(--color-bg)', padding: 16 }}>
+                        <table className="data-table">
+                          <thead><tr><th>ID</th><th>Store</th><th>Product</th><th>Colour</th><th>Size</th><th>Quantity</th><th>Status</th></tr></thead>
+                          <tbody>
+                            {dayRequests.map((r) => (
+                              <tr key={r.request_id}>
+                                <td>{r.request_id}</td>
+                                <td>Store {r.store_id}</td>
+                                <td>{r.ProductVariant?.Product?.product_name}</td>
+                                <td>{r.ProductVariant?.color}</td>
+                                <td>{r.ProductVariant?.size}</td>
+                                <td>{r.quantity}</td>
+                                <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
             </tbody>
           </table>

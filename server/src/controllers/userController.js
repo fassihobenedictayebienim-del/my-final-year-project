@@ -5,7 +5,7 @@ const logActivity = require('../utils/activityLogger');
 async function listUsers(req, res) {
   try {
     const users = await User.findAll({
-      attributes: ['user_id', 'name', 'email', 'role', 'warehouse_id', 'store_id', 'created_at'],
+      attributes: ['user_id', 'name', 'email', 'phone', 'role', 'warehouse_id', 'store_id', 'created_at'],
       order: [['role', 'ASC'], ['name', 'ASC']],
     });
     res.json({ users });
@@ -20,7 +20,7 @@ async function updateUser(req, res) {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    const { name, email, role, warehouse_id, store_id } = req.body;
+    const { name, email, phone, role, warehouse_id, store_id } = req.body;
 
     if (email && email !== user.email) {
       const existing = await User.findOne({ where: { email } });
@@ -39,15 +39,17 @@ async function updateUser(req, res) {
 
     const oldName = user.name;
     await user.update({
-      name: name ?? user.name, email: email ?? user.email, role: newRole,
-      warehouse_id: newWarehouseId, store_id: newStoreId,
+      name: name ?? user.name,
+      email: email ?? user.email,
+      phone: phone !== undefined ? (phone || null) : user.phone,
+      role: newRole, warehouse_id: newWarehouseId, store_id: newStoreId,
     });
 
     await logActivity(req.user, 'USER_UPDATED', `${req.user.name || 'Administrator'} updated account for ${oldName} → ${user.name}.`);
 
     res.json({
       message: 'User updated successfully.',
-      user: { user_id: user.user_id, name: user.name, email: user.email, role: user.role, warehouse_id: user.warehouse_id, store_id: user.store_id },
+      user: { user_id: user.user_id, name: user.name, email: user.email, phone: user.phone, role: user.role, warehouse_id: user.warehouse_id, store_id: user.store_id },
     });
   } catch (error) {
     console.error('Update user error:', error);
@@ -58,9 +60,8 @@ async function updateUser(req, res) {
 async function resetUserPassword(req, res) {
   try {
     const { newPassword } = req.body;
-    if (!newPassword || newPassword.length < 8) {
-      return res.status(400).json({ message: 'New password must be at least 8 characters.' });
-    }
+    if (!newPassword || newPassword.length < 8) return res.status(400).json({ message: 'New password must be at least 8 characters.' });
+
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
 

@@ -12,6 +12,7 @@ export default function StoreInventoryPage() {
   const [editingReorder, setEditingReorder] = useState(null);
   const [reorderValue, setReorderValue] = useState('');
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Load store inventory once when the page opens.
   useEffect(() => { fetchData(); }, []);
 
   async function fetchData() {
@@ -19,7 +20,7 @@ export default function StoreInventoryPage() {
     try {
       const response = await api.get('/inventory/summary');
       setSummary(response.data.summary);
-    } catch (err) {
+    } catch (_err) {
       showToast('Failed to load your store inventory.', 'error');
     } finally {
       setLoading(false);
@@ -75,8 +76,13 @@ export default function StoreInventoryPage() {
         />
       </div>
 
-      {loading ? <p>Loading...</p> : filtered.length === 0 ? (
-        <p style={{ color: 'var(--color-text-muted)' }}>{summary.length === 0 ? 'No stock recorded at your store yet.' : 'No products match your search.'}</p>
+      {loading ? (
+        <div className="loading-row"><span className="spinner" style={{ borderTopColor: 'var(--color-primary)', borderColor: 'var(--color-border)' }} /> Loading your inventory...</div>
+      ) : filtered.length === 0 ? (
+        <div className="empty-state">
+          <span className="empty-state-icon">📦</span>
+          {summary.length === 0 ? 'No stock recorded at your store yet.' : 'No products match your search.'}
+        </div>
       ) : (
         <div className="table-wrap">
           <table className="data-table">

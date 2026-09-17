@@ -33,6 +33,26 @@ function stockStatusCounts(summaryRows) {
   };
 }
 
+// Flattens every individually-flagged variant out of a location's product
+// summary, REGARDLESS of whether the parent product itself is flagged.
+// This is the fix: a product whose total is healthy can still contain a
+// variant sitting at 0, and that variant must still surface here.
+function extractVariantAlerts(summaryRows) {
+  const alerts = summaryRows.flatMap((p) =>
+    p.variants.filter((v) => v.flag).map((v) => ({
+      product_id: p.product_id,
+      product_name: p.product_name,
+      variant_id: v.variant_id,
+      color: v.color,
+      size: v.size,
+      quantity: v.quantity,
+      status: v.flag, // 'out' | 'low'
+    }))
+  );
+  // out-of-stock first, then low-stock
+  return alerts.sort((a, b) => (a.status === b.status ? 0 : a.status === 'out' ? -1 : 1));
+}
+
 // ================= ADMINISTRATOR =================
 async function getAdminDashboard(req, res) {
   try {
@@ -48,7 +68,6 @@ async function getAdminDashboard(req, res) {
     const total_sales = Number(await Sale.sum('total_price')) || 0;
     const number_of_stores = await Store.count();
 
-    // Low-stock product count across every location in the business
     const warehouses = await Warehouse.findAll();
     const stores = await Store.findAll();
     const allSummaries = [];
@@ -56,32 +75,31 @@ async function getAdminDashboard(req, res) {
     for (const s of stores) allSummaries.push(...(await getLocationProductSummary('store', s.store_id)));
     const low_stock_count = allSummaries.filter((r) => r.status === 'low' || r.status === 'out').length;
 
-    // Sales trend (all stores combined)
+    // Variant-level counts, aggregated across every location
+    const allVariantAlerts = extractVariantAlerts(allSummaries);
+    const variants_needing_attention = allVariantAlerts.length;
+    const out_of_stock_variants = allVariantAlerts.filter((v) => v.status === 'out').length;
+
     const salesInRange = await Sale.findAll({ where: { sale_date: { [Op.gte]: cutoff } } });
     const trendMap = {};
     labels.forEach((l) => { trendMap[l] = 0; });
     salesInRange.forEach((s) => { const k = dayKey(s.sale_date); if (k in trendMap) trendMap[k] += Number(s.total_price); });
     const sales_trend = labels.map((l) => ({ date: l, revenue: Math.round(trendMap[l] * 100) / 100 }));
 
-    // Sales by store
     const salesByStoreMap = {};
     salesInRange.forEach((s) => { salesByStoreMap[s.store_id] = (salesByStoreMap[s.store_id] || 0) + Number(s.total_price); });
     const sales_by_store = stores.map((s) => ({ store_name: s.name, revenue: Math.round((salesByStoreMap[s.store_id] || 0) * 100) / 100 }));
 
-    // Inventory by location
     const inventory_by_location = [
       { location_name: warehouses[0]?.name || 'Warehouse', quantity: allInventory.filter((r) => r.warehouse_id).reduce((s, r) => s + r.quantity, 0) },
       ...stores.map((s) => ({ location_name: s.name, quantity: allInventory.filter((r) => r.store_id === s.store_id).reduce((sum, r) => sum + r.quantity, 0) })),
     ];
 
-    // Top-selling products (by quantity, within range)
-    const productQtyMap = {};
-    const productNameMap = {};
-    salesInRange.forEach((s) => {}); // placeholder, real aggregation below needs variant->product join
     const salesWithVariant = await Sale.findAll({
       where: { sale_date: { [Op.gte]: cutoff } },
       include: [{ model: ProductVariant, include: [Product] }],
     });
+    const productQtyMap = {}, productNameMap = {};
     salesWithVariant.forEach((s) => {
       const pid = s.ProductVariant.product_id;
       productQtyMap[pid] = (productQtyMap[pid] || 0) + s.quantity;
@@ -95,7 +113,10 @@ async function getAdminDashboard(req, res) {
     const stock_status = stockStatusCounts(allSummaries);
 
     res.json({
-      kpis: { total_products: totalProducts, total_inventory_quantity, total_inventory_value, total_sales, number_of_stores, low_stock_count },
+      kpis: {
+        total_products: totalProducts, total_inventory_quantity, total_inventory_value, total_sales,
+        number_of_stores, low_stock_count, variants_needing_attention, out_of_stock_variants,
+      },
       sales_trend, sales_by_store, inventory_by_location, top_selling_products, stock_status,
       days_range: days,
     });
@@ -123,17 +144,14 @@ async function getWarehouseDashboard(req, res) {
     const pending_store_requests = await StockRequest.count({ where: { status: 'pending' } });
     const products_below_reorder = summary.filter((r) => r.status === 'low' || r.status === 'out').length;
 
-    const recentTransfersRaw = await StockTransfer.findAll({
-      where: { warehouse_id },
-      order: [['transfer_date', 'DESC']],
-      limit: 5,
-    });
+    const variant_alerts = extractVariantAlerts(summary);
+    const variants_needing_attention = variant_alerts.length;
+
+    const recentTransfersRaw = await StockTransfer.findAll({ where: { warehouse_id }, order: [['transfer_date', 'DESC']], limit: 5 });
     const recent_transfers = recentTransfersRaw.map((t) => ({
-      transfer_id: t.transfer_id, store_id: t.store_id, quantity: t.quantity_transferred,
-      status: t.status, date: t.transfer_date,
+      transfer_id: t.transfer_id, store_id: t.store_id, quantity: t.quantity_transferred, status: t.status, date: t.transfer_date,
     }));
 
-    // Stock movement trend: shipments received vs. dispatched, per day
     const shipmentsInRange = await Shipment.findAll({ where: { warehouse_id, date_received: { [Op.gte]: cutoff } } });
     const transfersInRange = await StockTransfer.findAll({ where: { warehouse_id, transfer_date: { [Op.gte]: cutoff } } });
     const movementMap = {};
@@ -142,22 +160,18 @@ async function getWarehouseDashboard(req, res) {
     transfersInRange.forEach((t) => { const k = dayKey(t.transfer_date); if (k in movementMap) movementMap[k].dispatched += t.quantity_transferred; });
     const stock_movement_trend = labels.map((l) => ({ date: l, received: movementMap[l].received, dispatched: movementMap[l].dispatched }));
 
-    // Stock transferred to each store, within range
     const stores = await Store.findAll();
     const transferByStore = {};
     transfersInRange.forEach((t) => { transferByStore[t.store_id] = (transferByStore[t.store_id] || 0) + t.quantity_transferred; });
     const stock_transferred_to_stores = stores.map((s) => ({ store_name: s.name, quantity: transferByStore[s.store_id] || 0 }));
 
-    // Top-moving products (by quantity dispatched, within range)
     const transferRequestIds = transfersInRange.map((t) => t.request_id);
-    const StockRequestModel = require('../models/StockRequest');
     const relatedRequests = transferRequestIds.length
-      ? await StockRequestModel.findAll({ where: { request_id: transferRequestIds }, include: [{ model: ProductVariant, include: [Product] }] })
+      ? await StockRequest.findAll({ where: { request_id: transferRequestIds }, include: [{ model: ProductVariant, include: [Product] }] })
       : [];
     const requestMap = {};
     relatedRequests.forEach((r) => { requestMap[r.request_id] = r; });
-    const movedQtyMap = {};
-    const movedNameMap = {};
+    const movedQtyMap = {}, movedNameMap = {};
     transfersInRange.forEach((t) => {
       const req = requestMap[t.request_id];
       if (!req) return;
@@ -174,9 +188,12 @@ async function getWarehouseDashboard(req, res) {
     const stock_status = stockStatusCounts(summary);
 
     res.json({
-      kpis: { total_warehouse_stock, warehouse_inventory_value, pending_store_requests, products_below_reorder, recent_transfers_count: recent_transfers.length },
+      kpis: {
+        total_warehouse_stock, warehouse_inventory_value, pending_store_requests,
+        products_below_reorder, recent_transfers_count: recent_transfers.length, variants_needing_attention,
+      },
       recent_transfers, stock_movement_trend, stock_transferred_to_stores, top_moving_products,
-      warehouse_low_stock_products, stock_status, days_range: days,
+      warehouse_low_stock_products, variant_alerts, stock_status, days_range: days,
     });
   } catch (error) {
     console.error('Warehouse dashboard error:', error);
@@ -187,7 +204,7 @@ async function getWarehouseDashboard(req, res) {
 // ================= STORE MANAGER =================
 async function getStoreDashboard(req, res) {
   try {
-    const store_id = req.user.store_id; // NEVER trust a store id from the frontend
+    const store_id = req.user.store_id;
     if (!store_id) return res.status(400).json({ message: 'Your account is not linked to a store.' });
 
     const days = Math.min(Math.max(Number(req.query.days) || 30, 7), 90);
@@ -204,14 +221,15 @@ async function getStoreDashboard(req, res) {
     const low_stock_products_count = summary.filter((r) => r.status === 'low' || r.status === 'out').length;
     const pending_stock_requests = await StockRequest.count({ where: { store_id, status: 'pending' } });
 
-    // Sales trend
+    const variant_alerts = extractVariantAlerts(summary);
+    const variants_needing_attention = variant_alerts.length;
+
     const salesInRange = await Sale.findAll({ where: { store_id, sale_date: { [Op.gte]: cutoff } } });
     const trendMap = {};
     labels.forEach((l) => { trendMap[l] = 0; });
     salesInRange.forEach((s) => { const k = dayKey(s.sale_date); if (k in trendMap) trendMap[k] += Number(s.total_price); });
     const sales_trend = labels.map((l) => ({ date: l, revenue: Math.round(trendMap[l] * 100) / 100 }));
 
-    // Top-selling products
     const salesWithVariant = await Sale.findAll({
       where: { store_id, sale_date: { [Op.gte]: cutoff } },
       include: [{ model: ProductVariant, include: [Product] }],
@@ -227,7 +245,6 @@ async function getStoreDashboard(req, res) {
       .sort((a, b) => b.quantity_sold - a.quantity_sold)
       .slice(0, 5);
 
-    // Current stock by product (capped to top 8 by quantity, per the "don't overcrowd" guidance)
     const current_stock_by_product = [...summary].sort((a, b) => b.total_quantity - a.total_quantity).slice(0, 8)
       .map((r) => ({ product_name: r.product_name, quantity: r.total_quantity }));
 
@@ -235,9 +252,12 @@ async function getStoreDashboard(req, res) {
     const stock_status = stockStatusCounts(summary);
 
     res.json({
-      kpis: { current_store_stock, todays_sales_count: todaySales.length, todays_revenue, low_stock_products_count, pending_stock_requests },
-      sales_trend, top_selling_products, current_stock_by_product, products_below_reorder, stock_status,
-      days_range: days,
+      kpis: {
+        current_store_stock, todays_sales_count: todaySales.length, todays_revenue,
+        low_stock_products_count, pending_stock_requests, variants_needing_attention,
+      },
+      sales_trend, top_selling_products, current_stock_by_product, products_below_reorder,
+      variant_alerts, stock_status, days_range: days,
     });
   } catch (error) {
     console.error('Store dashboard error:', error);

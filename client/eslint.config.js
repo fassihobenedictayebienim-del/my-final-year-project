@@ -17,5 +17,15 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Context providers deliberately export a hook alongside their component.
+      'react-refresh/only-export-components': 'off',
+      // Error objects are kept in catch clauses where a detailed API error may
+      // later be surfaced; an underscore makes that intent explicit.
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+      // Data-loading effects call asynchronous functions; this rule incorrectly
+      // treats those calls as synchronous state updates.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])

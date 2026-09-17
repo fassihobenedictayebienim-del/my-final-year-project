@@ -9,11 +9,12 @@ export default function UserManagementPage() {
   const [loading, setLoading] = useState(true);
 
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', email: '', password: '', role: 'store_manager', warehouse_id: '', store_id: '' });
+  const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '', role: 'store_manager', warehouse_id: '', store_id: '' });
 
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Load users once when the page opens.
   useEffect(() => { fetchUsers(); }, []);
 
   async function fetchUsers() {
@@ -21,7 +22,7 @@ export default function UserManagementPage() {
     try {
       const response = await api.get('/users');
       setUsers(response.data.users);
-    } catch (err) {
+    } catch (_err) {
       showToast('Failed to load users.', 'error');
     } finally {
       setLoading(false);
@@ -31,13 +32,13 @@ export default function UserManagementPage() {
   async function handleSubmit(e) {
     e.preventDefault();
     try {
-      const payload = { name: formData.name, email: formData.email, password: formData.password, role: formData.role };
+      const payload = { name: formData.name, email: formData.email, phone: formData.phone, password: formData.password, role: formData.role };
       if (formData.role === 'warehouse_manager') payload.warehouse_id = formData.warehouse_id;
       if (formData.role === 'store_manager') payload.store_id = formData.store_id;
 
       await api.post('/auth/register', payload);
       showToast(`Account created for ${formData.name}.`);
-      setFormData({ name: '', email: '', password: '', role: 'store_manager', warehouse_id: '', store_id: '' });
+      setFormData({ name: '', email: '', phone: '', password: '', role: 'store_manager', warehouse_id: '', store_id: '' });
       setShowForm(false);
       fetchUsers();
     } catch (err) {
@@ -46,13 +47,13 @@ export default function UserManagementPage() {
   }
 
   function startEdit(u) {
-    setEditingId(u.user_id);
-    setEditData({ name: u.name, email: u.email, role: u.role, warehouse_id: u.warehouse_id || '', store_id: u.store_id || '' });
-  }
+  setEditingId(u.user_id);
+  setEditData({ name: u.name, email: u.email, phone: u.phone || '', role: u.role, warehouse_id: u.warehouse_id || '', store_id: u.store_id || '' });
+}
 
   async function handleSaveEdit(user_id) {
     try {
-      const payload = { name: editData.name, email: editData.email, role: editData.role };
+      const payload = { name: editData.name, email: editData.email, phone: editData.phone, role: editData.role };
       if (editData.role === 'warehouse_manager') payload.warehouse_id = editData.warehouse_id;
       if (editData.role === 'store_manager') payload.store_id = editData.store_id;
 
@@ -72,6 +73,12 @@ export default function UserManagementPage() {
     return role;
   }
 
+  function roleBadge(role) {
+    if (role === 'administrator') return <span className="badge badge-fulfilled">{roleLabel(role)}</span>;
+    if (role === 'warehouse_manager') return <span className="badge badge-approved">{roleLabel(role)}</span>;
+    return <span className="badge badge-pending">{roleLabel(role)}</span>;
+  }
+
   return (
     <Layout>
       <div className="page-header">
@@ -85,38 +92,67 @@ export default function UserManagementPage() {
       {showForm && (
         <form onSubmit={handleSubmit} className="form-card">
           <div className="form-row">
-            <input className="form-input" placeholder="Full name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
-            <input className="form-input" type="email" placeholder="Email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
+            <div style={{ flex: 1 }}>
+              <label className="form-label">Full Name</label>
+              <input className="form-input" type="text" placeholder="Full name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required style={{ width: '100%' }} />
+            </div>
           </div>
           <div className="form-row">
-            <input className="form-input" type="password" placeholder="Temporary password" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required />
-            <select className="form-input" value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })}>
-              <option value="store_manager">Store Manager</option>
-              <option value="warehouse_manager">Warehouse Manager</option>
-              <option value="administrator">Administrator</option>
-            </select>
+                       <div style={{ flex: 1 }}>
+              <label className="form-label">Email</label>
+              <input className="form-input" type="email" placeholder="name@moae.com" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required style={{ width: '100%' }} />
+            </div>
+          </div>
+          <div className="form-row">
+            <div style={{ flex: 1 }}>
+              <label className="form-label">Phone (optional)</label>
+              <input className="form-input" type="tel" placeholder="e.g. 024 123 4567" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} style={{ width: '100%' }} />
+            </div>
+          </div>
+          <div className="form-row">
+            <div style={{ flex: 1 }}>
+              <label className="form-label">Temporary Password</label>
+              <input className="form-input" type="password" placeholder="Min. 8 characters" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required style={{ width: '100%' }} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label className="form-label">Role</label>
+              <select className="form-input" value={formData.role} onChange={(e) => setFormData({ ...formData, role: e.target.value })} style={{ width: '100%' }}>
+                <option value="store_manager">Store Manager</option>
+                <option value="warehouse_manager">Warehouse Manager</option>
+                <option value="administrator">Administrator</option>
+              </select>
+            </div>
           </div>
           {formData.role === 'warehouse_manager' && (
-            <div className="form-row"><input className="form-input" type="number" placeholder="Warehouse ID (e.g. 1)" value={formData.warehouse_id} onChange={(e) => setFormData({ ...formData, warehouse_id: e.target.value })} required /></div>
+            <div className="form-row">
+              <div><label className="form-label">Warehouse ID</label><input className="form-input" type="number" placeholder="1" value={formData.warehouse_id} onChange={(e) => setFormData({ ...formData, warehouse_id: e.target.value })} required /></div>
+            </div>
           )}
           {formData.role === 'store_manager' && (
-            <div className="form-row"><input className="form-input" type="number" placeholder="Store ID (1 or 2)" value={formData.store_id} onChange={(e) => setFormData({ ...formData, store_id: e.target.value })} required /></div>
+            <div className="form-row">
+              <div><label className="form-label">Store ID</label><input className="form-input" type="number" placeholder="1 or 2" value={formData.store_id} onChange={(e) => setFormData({ ...formData, store_id: e.target.value })} required /></div>
+            </div>
           )}
           <button type="submit" className="btn btn-primary">Create Account</button>
         </form>
       )}
 
-      {loading ? <p>Loading users...</p> : (
+      {loading ? (
+        <div className="loading-row"><span className="spinner" style={{ borderTopColor: 'var(--color-primary)', borderColor: 'var(--color-border)' }} /> Loading users...</div>
+      ) : users.length === 0 ? (
+        <div className="empty-state"><span className="empty-state-icon">👥</span>No users yet.</div>
+      ) : (
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Location</th><th>Created</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Location</th><th>Created</th><th>Actions</th></tr></thead>
             <tbody>
               {users.map((u) => (
                 <tr key={u.user_id}>
                   {editingId === u.user_id ? (
                     <>
                       <td><input className="form-input" value={editData.name} onChange={(e) => setEditData({ ...editData, name: e.target.value })} style={{ width: 110 }} /></td>
-                      <td><input className="form-input" value={editData.email} onChange={(e) => setEditData({ ...editData, email: e.target.value })} style={{ width: 160 }} /></td>
+                                            <td><input className="form-input" value={editData.email} onChange={(e) => setEditData({ ...editData, email: e.target.value })} style={{ width: 160 }} /></td>
+                      <td><input className="form-input" value={editData.phone} onChange={(e) => setEditData({ ...editData, phone: e.target.value })} style={{ width: 120 }} placeholder="Phone" /></td>
                       <td>
                         <select className="form-input" value={editData.role} onChange={(e) => setEditData({ ...editData, role: e.target.value })}>
                           <option value="store_manager">Store Manager</option>
@@ -131,17 +167,18 @@ export default function UserManagementPage() {
                       </td>
                       <td>{new Date(u.created_at).toLocaleDateString()}</td>
                       <td>
-                      <div className="action-buttons">
-                      <button className="btn btn-sm btn-success" onClick={() => handleSaveEdit(u.user_id)}>Save</button>
-                      <button className="btn btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
-                      </div>
+                        <div className="action-buttons">
+                          <button className="btn btn-sm btn-success" onClick={() => handleSaveEdit(u.user_id)}>Save</button>
+                          <button className="btn btn-sm" onClick={() => setEditingId(null)}>Cancel</button>
+                        </div>
                       </td>
                     </>
                   ) : (
                     <>
                       <td>{u.name}</td>
                       <td>{u.email}</td>
-                      <td>{roleLabel(u.role)}</td>
+                      <td>{u.phone || '—'}</td>
+                      <td>{roleBadge(u.role)}</td>
                       <td>{u.warehouse_id ? `Warehouse ${u.warehouse_id}` : u.store_id ? `Store ${u.store_id}` : '—'}</td>
                       <td>{new Date(u.created_at).toLocaleDateString()}</td>
                       <td><button className="btn btn-sm" onClick={() => startEdit(u)}>Edit</button></td>
