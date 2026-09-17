@@ -84,6 +84,7 @@ async function getInventorySummary(req, res) {
           byProduct[pid] = {
             product_id: pid,
             product_name: row.ProductVariant.Product.product_name,
+            unit_price: row.ProductVariant.Product.unit_price,
             total_quantity: 0,
             variants: [],
           };
@@ -91,6 +92,7 @@ async function getInventorySummary(req, res) {
         byProduct[pid].total_quantity += row.quantity;
         byProduct[pid].variants.push({
           variant_id: row.variant_id, color: row.ProductVariant.color, size: row.ProductVariant.size,
+          unit_price: row.ProductVariant.Product.unit_price,
           quantity: row.quantity, flag: buildVariantFlag(row.quantity),
         });
       }

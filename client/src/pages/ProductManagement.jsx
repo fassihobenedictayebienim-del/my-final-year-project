@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useToast } from '../context/ToastContext';
 import api from '../services/api';
+import { formatCurrency } from '../utils/currency';
 
 export default function ProductManagement() {
   const { showToast } = useToast();
@@ -207,7 +208,7 @@ export default function ProductManagement() {
                   <tr key={p.product_id}>
                     <td className="mono">{p.product_id}</td>
                     <td>{p.product_name}</td>
-                    <td>GHS {Number(p.unit_price).toFixed(2)}</td>
+                    <td>{formatCurrency(p.unit_price)}</td>
                     <td>
                       <div className="action-buttons">
                         <button className="btn btn-sm" onClick={() => toggleExpand(p.product_id)}>

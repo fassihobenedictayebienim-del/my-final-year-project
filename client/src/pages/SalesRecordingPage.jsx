@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useToast } from '../context/ToastContext';
 import api from '../services/api';
+import { formatCurrency } from '../utils/currency';
 
 export default function SalesRecordingPage() {
   const { showToast } = useToast();
@@ -29,13 +30,13 @@ export default function SalesRecordingPage() {
   }
 
   const selectedRow = storeInventory.find((r) => String(r.variant_id) === String(variantId));
-  const estimatedTotal = selectedRow && quantity ? (Number(selectedRow.ProductVariant.Product.unit_price) * Number(quantity)).toFixed(2) : null;
+  const estimatedTotal = selectedRow && quantity ? Number(selectedRow.ProductVariant.Product.unit_price) * Number(quantity) : null;
 
   async function handleSubmit(e) {
     e.preventDefault();
     try {
       const response = await api.post('/sales', { variant_id: variantId, quantity });
-      showToast(`Sale recorded successfully — GHS ${Number(response.data.sale.total_price).toFixed(2)}.`);
+      showToast(`Sale recorded successfully — ${formatCurrency(response.data.sale.total_price)}.`);
       setVariantId('');
       setQuantity('');
       fetchData();
@@ -60,7 +61,7 @@ export default function SalesRecordingPage() {
 
       <div className="stat-grid cols-2" style={{ marginBottom: 8 }}>
         <div className="card"><p className="stat-label">🛒 Items Sold Today</p><p className="stat-value">{itemsSoldToday}</p></div>
-        <div className="card"><p className="stat-label">💰 Revenue Today</p><p className="stat-value">GHS {totalToday.toFixed(2)}</p></div>
+        <div className="card"><p className="stat-label">💰 Revenue Today</p><p className="stat-value">{formatCurrency(totalToday)}</p></div>
       </div>
 
       <h3>Record Sale</h3>
@@ -86,7 +87,7 @@ export default function SalesRecordingPage() {
         {estimatedTotal !== null && (
           <div className="card" style={{ marginBottom: 14, padding: '10px 16px', display: 'inline-block' }}>
             <p className="stat-label" style={{ margin: 0 }}>Estimated Total</p>
-            <p className="stat-value" style={{ fontSize: 20, margin: '2px 0 0' }}>GHS {estimatedTotal}</p>
+            <p className="stat-value" style={{ fontSize: 20, margin: '2px 0 0' }}>{formatCurrency(estimatedTotal)}</p>
           </div>
         )}
         <div><button type="submit" className="btn btn-primary">Record Sale</button></div>
@@ -108,7 +109,7 @@ export default function SalesRecordingPage() {
                   <td>{s.ProductVariant?.color}</td>
                   <td>{s.ProductVariant?.size}</td>
                   <td>{s.quantity}</td>
-                  <td>GHS {Number(s.total_price).toFixed(2)}</td>
+                  <td>{formatCurrency(s.total_price)}</td>
                   <td>{new Date(s.sale_date).toLocaleTimeString()}</td>
                 </tr>
               ))}

@@ -7,6 +7,7 @@ import Layout from '../components/Layout';
 import { useToast } from '../context/ToastContext';
 import StatusPie from '../components/StatusPie';
 import api from '../services/api';
+import { formatCurrency, formatCurrencyValue } from '../utils/currency';
 
 const RANGES = [{ label: '7D', value: 7 }, { label: '30D', value: 30 }, { label: '90D', value: 90 }];
 
@@ -62,7 +63,7 @@ export default function StoreDashboard() {
           <div className="stat-grid cols-3">
             <div className="card"><p className="stat-label">📦 Current Store Stock</p><p className="stat-value">{data.kpis.current_store_stock}</p></div>
             <div className="card"><p className="stat-label">🛒 Today's Sales</p><p className="stat-value">{data.kpis.todays_sales_count}</p></div>
-            <div className="card"><p className="stat-label">💰 Today's Revenue</p><p className="stat-value">GHS {Number(data.kpis.todays_revenue).toFixed(2)}</p></div>
+            <div className="card"><p className="stat-label">💰 Today's Revenue</p><p className="stat-value">{formatCurrency(data.kpis.todays_revenue)}</p></div>
             <div className={`card ${data.kpis.low_stock_products_count > 0 ? 'stat-card alert' : ''}`}><p className="stat-label">⚠️ Low-Stock Products</p><p className="stat-value">{data.kpis.low_stock_products_count}</p></div>
             <div className={`card ${data.kpis.pending_stock_requests > 0 ? 'stat-card pending' : ''}`}><p className="stat-label">📋 Pending Requests</p><p className="stat-value">{data.kpis.pending_stock_requests}</p></div>
             <div className={`card ${data.kpis.variants_needing_attention > 0 ? 'stat-card alert' : ''}`}>
@@ -84,8 +85,8 @@ export default function StoreDashboard() {
                 <LineChart data={data.sales_trend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v) => [`GHS ${v}`, 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={formatCurrencyValue} />
+                  <Tooltip formatter={(v) => [formatCurrency(v), 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
                   <Line type="monotone" dataKey="revenue" stroke="var(--color-primary)" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>

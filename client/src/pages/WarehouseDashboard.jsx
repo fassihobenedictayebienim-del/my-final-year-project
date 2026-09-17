@@ -7,6 +7,7 @@ import Layout from '../components/Layout';
 import { useToast } from '../context/ToastContext';
 import StatusPie from '../components/StatusPie';
 import api from '../services/api';
+import { formatCurrency } from '../utils/currency';
 
 const RANGES = [{ label: '7D', value: 7 }, { label: '30D', value: 30 }, { label: '90D', value: 90 }];
 
@@ -64,7 +65,7 @@ export default function WarehouseDashboard() {
         <>
           <div className="stat-grid cols-3">
             <div className="card"><p className="stat-label">📦 Total Warehouse Stock</p><p className="stat-value">{data.kpis.total_warehouse_stock}</p></div>
-            <div className="card"><p className="stat-label">💰 Warehouse Inventory Value</p><p className="stat-value">GHS {Number(data.kpis.warehouse_inventory_value).toFixed(2)}</p></div>
+            <div className="card"><p className="stat-label">💰 Warehouse Inventory Value</p><p className="stat-value">{formatCurrency(data.kpis.warehouse_inventory_value)}</p></div>
             <div className={`card ${data.kpis.pending_store_requests > 0 ? 'stat-card pending' : ''}`}>
               <p className="stat-label">📋 Pending Store Requests</p><p className="stat-value">{data.kpis.pending_store_requests}</p>
               {data.kpis.pending_store_requests > 0 && <Link to="/warehouse/requests">Review now &rarr;</Link>}

@@ -5,6 +5,7 @@ import {
 import Layout from '../components/Layout';
 import StatusPie from '../components/StatusPie';
 import api from '../services/api';
+import { formatCurrency, formatCurrencyValue } from '../utils/currency';
 
 const RANGES = [{ label: '7D', value: 7 }, { label: '30D', value: 30 }, { label: '90D', value: 90 }];
 
@@ -38,8 +39,8 @@ export default function AdminDashboard() {
           <div className="stat-grid cols-3">
             <div className="card"><p className="stat-label">📦 Total Products</p><p className="stat-value">{data.kpis.total_products}</p></div>
             <div className="card"><p className="stat-label">🔢 Total Inventory Qty</p><p className="stat-value">{data.kpis.total_inventory_quantity}</p></div>
-            <div className="card"><p className="stat-label">💰 Total Inventory Value</p><p className="stat-value">GHS {Number(data.kpis.total_inventory_value).toFixed(2)}</p></div>
-            <div className="card"><p className="stat-label">📈 Total Sales</p><p className="stat-value">GHS {Number(data.kpis.total_sales).toFixed(2)}</p></div>
+            <div className="card"><p className="stat-label">💰 Total Inventory Value</p><p className="stat-value">{formatCurrency(data.kpis.total_inventory_value)}</p></div>
+            <div className="card"><p className="stat-label">📈 Total Sales</p><p className="stat-value">{formatCurrency(data.kpis.total_sales)}</p></div>
             <div className="card"><p className="stat-label">🏬 Number of Stores</p><p className="stat-value">{data.kpis.number_of_stores}</p></div>
             <div className={`card ${data.kpis.low_stock_count > 0 ? 'stat-card alert' : ''}`}>
               <p className="stat-label">⚠️ Low-Stock Products</p>
@@ -72,8 +73,8 @@ export default function AdminDashboard() {
                 <LineChart data={data.sales_trend}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip formatter={(v) => [`GHS ${v}`, 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 12.5, border: '1px solid var(--color-border)' }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={formatCurrencyValue} />
+                  <Tooltip formatter={(v) => [formatCurrency(v), 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 12.5, border: '1px solid var(--color-border)' }} />
                   <Line type="monotone" dataKey="revenue" stroke="var(--color-primary)" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -88,8 +89,8 @@ export default function AdminDashboard() {
                   <BarChart data={data.sales_by_store}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis dataKey="store_name" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip formatter={(v) => [`GHS ${v}`, 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <YAxis tick={{ fontSize: 11 }} tickFormatter={formatCurrencyValue} />
+                    <Tooltip formatter={(v) => [formatCurrency(v), 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
                     <Bar dataKey="revenue" fill="var(--color-primary)" radius={[4, 4, 0, 0]} maxBarSize={48} />
                   </BarChart>
                 </ResponsiveContainer>

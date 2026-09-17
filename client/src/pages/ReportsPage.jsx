@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Layout from '../components/Layout';
 import api from '../services/api';
+import { formatCurrency } from '../utils/currency';
 
 export default function ReportsPage() {
   const { user } = useAuth();
@@ -181,7 +182,7 @@ function StoreSalesReport() {
               <div className="card">
                 <p className="stat-label">💰 Total Revenue</p>
                 <p className="stat-value" style={{ fontSize: 20 }}>
-                  GHS {Number(salesData.summary.total_revenue).toFixed(2)}
+                  {formatCurrency(salesData.summary.total_revenue)}
                 </p>
               </div>
             </div>
@@ -218,7 +219,7 @@ function StoreSalesReport() {
                           <td>{p.product_name}</td>
                           <td>{p.total_qty}</td>
                           <td>
-                            GHS {p.total_revenue.toFixed(2)}
+                            {formatCurrency(p.total_revenue)}
                           </td>
                           <td>
                             <button
@@ -264,7 +265,7 @@ function StoreSalesReport() {
                                       <td>{v.size}</td>
                                       <td>{v.quantity}</td>
                                       <td>
-                                        GHS {v.revenue.toFixed(2)}
+                                        {formatCurrency(v.revenue)}
                                       </td>
                                     </tr>
                                   ))}
@@ -322,7 +323,7 @@ function StoreSalesReport() {
                           <td>{s.ProductVariant?.size}</td>
                           <td>{s.quantity}</td>
                           <td>
-                            GHS {Number(s.total_price).toFixed(2)}
+                            {formatCurrency(s.total_price)}
                           </td>
                           <td>
                             {new Date(
@@ -628,8 +629,7 @@ function AdminReport() {
               className="stat-value"
               style={{ margin: '4px 0 0' }}
             >
-              GHS{' '}
-              {Number(inventoryData.total_value).toFixed(2)}
+              {formatCurrency(inventoryData.total_value)}
             </p>
           </div>
 
@@ -689,8 +689,7 @@ function AdminReport() {
                             ? 'Product'
                             : 'Products'}
                           {' • '}
-                          Inventory Value: GHS{' '}
-                          {location.total_value.toFixed(2)}
+                          Inventory Value: {formatCurrency(location.total_value)}
                         </div>
                       </div>
 
@@ -762,17 +761,11 @@ function AdminReport() {
                                         </td>
 
                                         <td>
-                                          GHS{' '}
-                                          {product.unit_price.toFixed(
-                                            2
-                                          )}
+                                          {formatCurrency(product.unit_price)}
                                         </td>
 
                                         <td>
-                                          GHS{' '}
-                                          {product.total_value.toFixed(
-                                            2
-                                          )}
+                                          {formatCurrency(product.total_value)}
                                         </td>
 
                                         <td>
@@ -866,17 +859,11 @@ function AdminReport() {
                                                       </td>
 
                                                       <td>
-                                                        GHS{' '}
-                                                        {variant.unit_price.toFixed(
-                                                          2
-                                                        )}
+                                                        {formatCurrency(variant.unit_price)}
                                                       </td>
 
                                                       <td>
-                                                        GHS{' '}
-                                                        {variant.value.toFixed(
-                                                          2
-                                                        )}
+                                                        {formatCurrency(variant.value)}
                                                       </td>
                                                     </tr>
                                                   )
@@ -1006,10 +993,7 @@ function AdminReport() {
                   className="stat-value"
                   style={{ fontSize: 20 }}
                 >
-                  GHS{' '}
-                  {Number(
-                    salesData.summary.total_revenue
-                  ).toFixed(2)}
+                  {formatCurrency(salesData.summary.total_revenue)}
                 </p>
               </div>
             </div>
@@ -1047,7 +1031,7 @@ function AdminReport() {
                         <td>Store {s.store_id}</td>
                         <td>{s.quantity}</td>
                         <td>
-                          GHS {s.revenue.toFixed(2)}
+                          {formatCurrency(s.revenue)}
                         </td>
                       </tr>
                     ))}
@@ -1091,8 +1075,7 @@ function AdminReport() {
                           <td>{p.product_name}</td>
                           <td>{p.total_qty}</td>
                           <td>
-                            GHS{' '}
-                            {p.total_revenue.toFixed(2)}
+                            {formatCurrency(p.total_revenue)}
                           </td>
 
                           <td>
@@ -1157,10 +1140,7 @@ function AdminReport() {
                                           {v.quantity}
                                         </td>
                                         <td>
-                                          GHS{' '}
-                                          {v.revenue.toFixed(
-                                            2
-                                          )}
+                                          {formatCurrency(v.revenue)}
                                         </td>
                                       </tr>
                                     )
@@ -1238,10 +1218,7 @@ function AdminReport() {
                           <td>{s.quantity}</td>
 
                           <td>
-                            GHS{' '}
-                            {Number(
-                              s.total_price
-                            ).toFixed(2)}
+                            {formatCurrency(s.total_price)}
                           </td>
 
                           <td>
@@ -1371,7 +1348,7 @@ function WarehouseReport() {
           >
             <p className="stat-label">Grand Total</p>
             <p className="stat-value" style={{ margin: '4px 0 0' }}>
-              GHS {Number(inventoryData.total_value).toFixed(2)}
+              {formatCurrency(inventoryData.total_value)}
             </p>
           </div>
 
@@ -1416,7 +1393,7 @@ function WarehouseReport() {
                       >
                         {rows.length} {rows.length === 1 ? 'item' : 'items'}
                         {' • '}
-                        Subtotal: GHS {subtotal.toFixed(2)}
+                        Subtotal: {formatCurrency(subtotal)}
                       </div>
                     </div>
 
@@ -1454,8 +1431,8 @@ function WarehouseReport() {
                                 <td>{row.color}</td>
                                 <td>{row.size}</td>
                                 <td>{row.quantity}</td>
-                                <td>GHS {Number(row.unit_price).toFixed(2)}</td>
-                                <td>GHS {Number(row.value).toFixed(2)}</td>
+                                <td>{formatCurrency(row.unit_price)}</td>
+                                <td>{formatCurrency(row.value)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1545,7 +1522,7 @@ function WarehouseReport() {
               <div className="card">
                 <p className="stat-label">Total Revenue</p>
                 <p className="stat-value" style={{ fontSize: 20 }}>
-                  GHS {Number(salesData.summary.total_revenue).toFixed(2)}
+                  {formatCurrency(salesData.summary.total_revenue)}
                 </p>
               </div>
             </div>
@@ -1588,7 +1565,7 @@ function WarehouseReport() {
                           <td>{s.ProductVariant?.size}</td>
                           <td>Store {s.store_id}</td>
                           <td>{s.quantity}</td>
-                          <td>GHS {Number(s.total_price).toFixed(2)}</td>
+                          <td>{formatCurrency(s.total_price)}</td>
                           <td>{new Date(s.sale_date).toLocaleString()}</td>
                         </tr>
                       ))}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useToast } from '../context/ToastContext';
 import api from '../services/api';
+import { formatCurrency } from '../utils/currency';
 
 export default function StoreInventoryPage() {
   const { showToast } = useToast();
@@ -86,12 +87,13 @@ export default function StoreInventoryPage() {
       ) : (
         <div className="table-wrap">
           <table className="data-table">
-            <thead><tr><th>Product</th><th>Total Stock</th><th>Reorder Level</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Product</th><th>Unit Price</th><th>Total Stock</th><th>Reorder Level</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {filtered.map((row) => (
                 <>
                   <tr key={row.product_id}>
                     <td>{row.product_name}</td>
+                    <td>{formatCurrency(row.unit_price)}</td>
                     <td>{row.total_quantity}</td>
                     <td>
                       {editingReorder === row.product_id ? (
@@ -117,14 +119,15 @@ export default function StoreInventoryPage() {
                   </tr>
                   {expandedProduct === row.product_id && (
                     <tr>
-                      <td colSpan={5} style={{ background: 'var(--color-bg)', padding: 16 }}>
+                      <td colSpan={6} style={{ background: 'var(--color-bg)', padding: 16 }}>
                         <table className="data-table">
-                          <thead><tr><th>Colour</th><th>Size</th><th>Quantity</th><th>Status</th></tr></thead>
+                          <thead><tr><th>Colour</th><th>Size</th><th>Unit Price</th><th>Quantity</th><th>Status</th></tr></thead>
                           <tbody>
                             {row.variants.map((v) => (
                               <tr key={v.variant_id}>
                                 <td>{v.color}</td>
                                 <td>{v.size}</td>
+                                <td>{formatCurrency(v.unit_price)}</td>
                                 <td>{v.quantity}</td>
                                 <td>{variantBadge(v.quantity)}</td>
                               </tr>

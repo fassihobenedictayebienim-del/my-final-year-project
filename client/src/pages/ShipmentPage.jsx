@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Layout from '../components/Layout';
 import { useToast } from '../context/ToastContext';
 import api from '../services/api';
+import { formatCurrency } from '../utils/currency';
 
 const today = () => new Date().toISOString().slice(0, 10);
 const reference = () => `SHP-${today().replaceAll('-', '')}-${String(Date.now()).slice(-6)}`;
@@ -216,7 +217,7 @@ export default function ShipmentPage() {
           {visibleProducts.map((product) => (
             <button key={product.product_id} type="button" onClick={() => chooseProduct(product)} className={`shipment-product-option ${selectedProduct?.product_id === product.product_id ? 'selected' : ''}`}>
               <strong>{product.product_name}</strong>
-              <span style={{ display: 'block', color: 'var(--color-text-muted)', fontSize: 12 }}>{product.product_id} · GHS {Number(product.unit_price).toFixed(2)}</span>
+              <span style={{ display: 'block', color: 'var(--color-text-muted)', fontSize: 12 }}>{product.product_id} · {formatCurrency(product.unit_price)}</span>
             </button>
           ))}
           {!visibleProducts.length && <div className="empty-state">No matching products found.</div>}
