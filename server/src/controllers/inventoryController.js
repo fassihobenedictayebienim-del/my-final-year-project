@@ -3,6 +3,7 @@ const Inventory = require('../models/Inventory');
 const ProductVariant = require('../models/ProductVariant');
 const Product = require('../models/Product');
 const ProductLocationSetting = require('../models/ProductLocationSetting');
+const VariantLocationSetting = require('../models/VariantLocationSetting');
 
 // GET /api/inventory — variant-level detail, filtered to the user's own location
 async function listInventory(req, res) {
@@ -39,11 +40,9 @@ async function getWarehouseStock(req, res) {
   }
 }
 
-const LOW_VARIANT_THRESHOLD = 5; // a variant is individually flagged if it's at or below this, regardless of the product's overall reorder level
-
-function buildVariantFlag(qty) {
+function buildVariantFlag(qty, reorderLevel) {
   if (qty === 0) return 'out';
-  if (qty <= LOW_VARIANT_THRESHOLD) return 'low';
+  if (reorderLevel > 0 && qty <= reorderLevel) return 'low';
   return null;
 }
 
@@ -93,7 +92,7 @@ async function getInventorySummary(req, res) {
         byProduct[pid].variants.push({
           variant_id: row.variant_id, color: row.ProductVariant.color, size: row.ProductVariant.size,
           unit_price: row.ProductVariant.Product.unit_price,
-          quantity: row.quantity, flag: buildVariantFlag(row.quantity),
+          quantity: row.quantity,
         });
       }
 
@@ -101,11 +100,18 @@ async function getInventorySummary(req, res) {
       const settings = await ProductLocationSetting.findAll({ where: settingWhere });
       const reorderMap = {};
       settings.forEach((s) => { reorderMap[s.product_id] = s.reorder_level; });
+      const variantSettings = await VariantLocationSetting.findAll({ where: settingWhere });
+      const variantReorderMap = {};
+      variantSettings.forEach((s) => { variantReorderMap[s.variant_id] = s.reorder_level; });
 
       for (const pid of Object.keys(byProduct)) {
         const entry = byProduct[pid];
         entry.reorder_level = reorderMap[pid] ?? 0;
         entry.status = entry.total_quantity === 0 ? 'out' : entry.total_quantity <= entry.reorder_level ? 'low' : 'ok';
+        entry.variants.forEach((variant) => {
+          variant.reorder_level = variantReorderMap[variant.variant_id] ?? 5;
+          variant.flag = buildVariantFlag(variant.quantity, variant.reorder_level);
+        });
         entry.low_variants = entry.variants.filter((v) => v.flag);
         summary.push({ location_type: loc.type, location_id: loc.id, location_label: loc.label, ...entry });
       }
@@ -197,4 +203,49 @@ async function setReorderLevel(req, res) {
   }
 }
 
-module.exports = { listInventory, getWarehouseStock, getInventorySummary, lowStockAlerts, getReorderLevel, setReorderLevel };
+// GET /api/inventory/variant-reorder-level/:variantId — current user's location-specific level
+async function getVariantReorderLevel(req, res) {
+  try {
+    const where = { variant_id: req.params.variantId };
+    if (req.user.role === 'warehouse_manager') where.warehouse_id = req.user.warehouse_id;
+    else if (req.user.role === 'store_manager') where.store_id = req.user.store_id;
+    else return res.status(400).json({ message: 'This endpoint is for Warehouse or Store Managers only.' });
+
+    const setting = await VariantLocationSetting.findOne({ where });
+    res.json({ reorder_level: setting ? setting.reorder_level : 5 });
+  } catch (error) {
+    console.error('Get variant reorder level error:', error);
+    res.status(500).json({ message: 'Something went wrong while fetching the variant reorder level.' });
+  }
+}
+
+// PUT /api/inventory/variant-reorder-level/:variantId — current user's location-specific level
+async function setVariantReorderLevel(req, res) {
+  try {
+    const { reorder_level } = req.body;
+    if (!Number.isInteger(Number(reorder_level)) || Number(reorder_level) < 0) {
+      return res.status(400).json({ message: 'A whole-number reorder level of zero or more is required.' });
+    }
+
+    const where = { variant_id: req.params.variantId };
+    if (req.user.role === 'warehouse_manager') where.warehouse_id = req.user.warehouse_id;
+    else if (req.user.role === 'store_manager') where.store_id = req.user.store_id;
+    else return res.status(400).json({ message: 'This endpoint is for Warehouse or Store Managers only.' });
+
+    const [setting] = await VariantLocationSetting.findOrCreate({
+      where,
+      defaults: { ...where, reorder_level: Number(reorder_level) },
+    });
+    setting.reorder_level = Number(reorder_level);
+    await setting.save();
+    res.json({ message: 'Variant reorder level updated.', setting });
+  } catch (error) {
+    console.error('Set variant reorder level error:', error);
+    res.status(500).json({ message: 'Something went wrong while updating the variant reorder level.' });
+  }
+}
+
+module.exports = {
+  listInventory, getWarehouseStock, getInventorySummary, lowStockAlerts, getReorderLevel, setReorderLevel,
+  getVariantReorderLevel, setVariantReorderLevel,
+};

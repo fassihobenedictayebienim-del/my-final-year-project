@@ -2,12 +2,11 @@ const Inventory = require('../models/Inventory');
 const ProductVariant = require('../models/ProductVariant');
 const Product = require('../models/Product');
 const ProductLocationSetting = require('../models/ProductLocationSetting');
+const VariantLocationSetting = require('../models/VariantLocationSetting');
 
-const LOW_VARIANT_THRESHOLD = 5;
-
-function variantFlag(qty) {
+function variantFlag(qty, reorderLevel) {
   if (qty === 0) return 'out';
-  if (qty <= LOW_VARIANT_THRESHOLD) return 'low';
+  if (reorderLevel > 0 && qty <= reorderLevel) return 'low';
   return null;
 }
 
@@ -35,7 +34,7 @@ async function getLocationProductSummary(locationType, locationId) {
     byProduct[pid].total_quantity += row.quantity;
     byProduct[pid].variants.push({
       variant_id: row.variant_id, color: row.ProductVariant.color, size: row.ProductVariant.size,
-      quantity: row.quantity, flag: variantFlag(row.quantity),
+      quantity: row.quantity,
     });
   }
 
@@ -43,10 +42,17 @@ async function getLocationProductSummary(locationType, locationId) {
   const settings = await ProductLocationSetting.findAll({ where: settingWhere });
   const reorderMap = {};
   settings.forEach((s) => { reorderMap[s.product_id] = s.reorder_level; });
+  const variantSettings = await VariantLocationSetting.findAll({ where: settingWhere });
+  const variantReorderMap = {};
+  variantSettings.forEach((s) => { variantReorderMap[s.variant_id] = s.reorder_level; });
 
   return Object.values(byProduct).map((entry) => {
     const reorder_level = reorderMap[entry.product_id] ?? 0;
     const status = entry.total_quantity === 0 ? 'out' : entry.total_quantity <= reorder_level ? 'low' : 'ok';
+    entry.variants.forEach((variant) => {
+      variant.reorder_level = variantReorderMap[variant.variant_id] ?? 5;
+      variant.flag = variantFlag(variant.quantity, variant.reorder_level);
+    });
     return { ...entry, reorder_level, status, low_variants: entry.variants.filter((v) => v.flag) };
   });
 }

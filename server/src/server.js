@@ -7,6 +7,7 @@ const { sequelize, testConnection } = require('./config/db');
 const Product = require('./models/Product');
 const ProductVariant = require('./models/ProductVariant');
 const ProductLocationSetting = require('./models/ProductLocationSetting');
+const VariantLocationSetting = require('./models/VariantLocationSetting');
 const Inventory = require('./models/Inventory');
 const Shipment = require('./models/Shipment');
 const ShipmentBatch = require('./models/ShipmentBatch');

@@ -6,6 +6,7 @@ import Layout from '../components/Layout';
 import StatusPie from '../components/StatusPie';
 import api from '../services/api';
 import { formatCurrency, formatCurrencyValue } from '../utils/currency';
+import { chartTooltipProps } from '../utils/chartTooltip';
 
 const RANGES = [{ label: '7D', value: 7 }, { label: '30D', value: 30 }, { label: '90D', value: 90 }];
 
@@ -74,7 +75,7 @@ export default function AdminDashboard() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={formatCurrencyValue} />
-                  <Tooltip formatter={(v) => [formatCurrency(v), 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 12.5, border: '1px solid var(--color-border)' }} />
+                  <Tooltip {...chartTooltipProps} formatter={(v) => [formatCurrency(v), 'Revenue']} />
                   <Line type="monotone" dataKey="revenue" stroke="var(--color-primary)" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -90,7 +91,7 @@ export default function AdminDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis dataKey="store_name" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={formatCurrencyValue} />
-                    <Tooltip formatter={(v) => [formatCurrency(v), 'Revenue']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Tooltip {...chartTooltipProps} formatter={(v) => [formatCurrency(v), 'Revenue']} />
                     <Bar dataKey="revenue" fill="var(--color-primary)" radius={[4, 4, 0, 0]} maxBarSize={48} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -104,7 +105,7 @@ export default function AdminDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis dataKey="location_name" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Tooltip {...chartTooltipProps} />
                     <Bar dataKey="quantity" fill="var(--color-success)" radius={[4, 4, 0, 0]} maxBarSize={48} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -121,7 +122,7 @@ export default function AdminDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis type="number" tick={{ fontSize: 11 }} />
                     <YAxis type="category" dataKey="product_name" tick={{ fontSize: 11 }} width={110} />
-                    <Tooltip formatter={(v) => [v, 'Units sold']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Tooltip {...chartTooltipProps} formatter={(v) => [v, 'Units sold']} />
                     <Bar dataKey="quantity_sold" fill="var(--color-primary)" radius={[0, 4, 4, 0]} maxBarSize={22} />
                   </BarChart>
                 </ResponsiveContainer>

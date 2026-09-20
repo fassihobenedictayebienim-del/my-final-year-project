@@ -8,6 +8,7 @@ import { useToast } from '../context/ToastContext';
 import StatusPie from '../components/StatusPie';
 import api from '../services/api';
 import { formatCurrency } from '../utils/currency';
+import { chartTooltipProps } from '../utils/chartTooltip';
 
 const RANGES = [{ label: '7D', value: 7 }, { label: '30D', value: 30 }, { label: '90D', value: 90 }];
 
@@ -100,7 +101,7 @@ export default function WarehouseDashboard() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                   <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
                   <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                  <Tooltip {...chartTooltipProps} />
                   <Legend wrapperStyle={{ fontSize: 12.5 }} />
                   <Line type="monotone" dataKey="received" name="Received" stroke="var(--color-success)" strokeWidth={2} dot={false} />
                   <Line type="monotone" dataKey="dispatched" name="Dispatched" stroke="var(--color-primary)" strokeWidth={2} dot={false} />
@@ -118,7 +119,7 @@ export default function WarehouseDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis dataKey="store_name" tick={{ fontSize: 11 }} />
                     <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Tooltip {...chartTooltipProps} />
                     <Bar dataKey="quantity" fill="var(--color-primary)" radius={[4, 4, 0, 0]} maxBarSize={48} />
                   </BarChart>
                 </ResponsiveContainer>
@@ -132,7 +133,7 @@ export default function WarehouseDashboard() {
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                     <XAxis type="number" tick={{ fontSize: 11 }} />
                     <YAxis type="category" dataKey="product_name" tick={{ fontSize: 11 }} width={110} />
-                    <Tooltip formatter={(v) => [v, 'Units moved']} contentStyle={{ borderRadius: 8, fontSize: 12.5 }} />
+                    <Tooltip {...chartTooltipProps} formatter={(v) => [v, 'Units moved']} />
                     <Bar dataKey="quantity_moved" fill="var(--color-success)" radius={[0, 4, 4, 0]} maxBarSize={22} />
                   </BarChart>
                 </ResponsiveContainer>

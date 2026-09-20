@@ -1,4 +1,5 @@
 import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { chartTooltipProps } from '../utils/chartTooltip';
 
 const COLORS = { 'In Stock': '#16a34a', 'Low Stock': '#f59e0b', 'Out of Stock': '#dc2626' };
 
@@ -17,7 +18,7 @@ export default function StatusPie({ inStock, lowStock, outOfStock }) {
         <Pie data={data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2}>
           {data.map((entry) => <Cell key={entry.name} fill={COLORS[entry.name]} />)}
         </Pie>
-        <Tooltip />
+        <Tooltip {...chartTooltipProps} />
         <Legend wrapperStyle={{ fontSize: 12.5 }} />
       </PieChart>
     </ResponsiveContainer>

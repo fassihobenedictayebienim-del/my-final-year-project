@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import { formatCurrency } from '../utils/currency';
 
 export default function ProductManagement() {
   const { showToast } = useToast();
+  const { user } = useAuth();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -17,6 +19,8 @@ export default function ProductManagement() {
   const [expandedProduct, setExpandedProduct] = useState(null);
   const [variantDetail, setVariantDetail] = useState({});
   const [newVariant, setNewVariant] = useState({ color: '', size: '' });
+  const [editingVariantReorder, setEditingVariantReorder] = useState(null);
+  const [variantReorderValue, setVariantReorderValue] = useState('');
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- Load products once when the page opens.
   useEffect(() => { fetchProducts(); }, []);
@@ -103,6 +107,23 @@ export default function ProductManagement() {
     }
   }
 
+  function startEditVariantReorder(variant) {
+    setEditingVariantReorder(variant.variant_id);
+    setVariantReorderValue(variant.reorder_level);
+  }
+
+  async function saveVariantReorder(product_id, variant_id) {
+    try {
+      await api.put(`/inventory/variant-reorder-level/${variant_id}`, { reorder_level: Number(variantReorderValue) });
+      const response = await api.get(`/products/${product_id}/variants`);
+      setVariantDetail((prev) => ({ ...prev, [product_id]: response.data.variants }));
+      setEditingVariantReorder(null);
+      showToast('Variant reorder level updated.');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update the variant reorder level.', 'error');
+    }
+  }
+
   async function handleDeleteProduct(product_id) {
     if (!window.confirm('Delete this product and all its variants? This cannot be undone.')) return;
     try {
@@ -114,9 +135,9 @@ export default function ProductManagement() {
     }
   }
 
-  function variantBadge(qty) {
+  function variantBadge(qty, reorderLevel) {
     if (qty === 0) return <span className="stock-badge out-of-stock">🔴 Out</span>;
-    if (qty <= 5) return <span className="stock-badge low-stock">🟠 Low</span>;
+    if (reorderLevel > 0 && qty <= reorderLevel) return <span className="stock-badge low-stock">🟠 Low</span>;
     return <span className="stock-badge in-stock">🟢 OK</span>;
   }
 
@@ -204,8 +225,8 @@ export default function ProductManagement() {
             <thead><tr><th>Product ID</th><th>Name</th><th>Unit Price</th><th>Actions</th></tr></thead>
             <tbody>
               {filteredProducts.map((p) => (
-                <>
-                  <tr key={p.product_id}>
+                <Fragment key={p.product_id}>
+                  <tr>
                     <td className="mono">{p.product_id}</td>
                     <td>{p.product_name}</td>
                     <td>{formatCurrency(p.unit_price)}</td>
@@ -226,15 +247,30 @@ export default function ProductManagement() {
                         ) : (
                           <>
                             <table className="data-table" style={{ marginBottom: 12 }}>
-                              <thead><tr><th>Colour</th><th>Size</th><th>Quantity (your location)</th><th>Status</th><th>Actions</th></tr></thead>
+                              <thead><tr><th>Colour</th><th>Size</th><th>Quantity (your location)</th><th>Variant Reorder Level</th><th>Status</th><th>Actions</th></tr></thead>
                               <tbody>
                                 {variantDetail[p.product_id].map((v) => (
                                   <tr key={v.variant_id}>
                                     <td>{v.color}</td>
                                     <td>{v.size}</td>
                                     <td>{v.quantity}</td>
-                                    <td>{variantBadge(v.quantity)}</td>
-                                    <td><button className="btn btn-sm btn-danger" onClick={() => handleDeleteVariant(p.product_id, v.variant_id)}>Delete</button></td>
+                                    <td>
+                                      {editingVariantReorder === v.variant_id ? (
+                                        <input className="form-input" type="number" min="0" value={variantReorderValue} onChange={(e) => setVariantReorderValue(e.target.value)} style={{ width: 80 }} />
+                                      ) : v.reorder_level}
+                                    </td>
+                                    <td>{variantBadge(v.quantity, v.reorder_level)}</td>
+                                    <td>
+                                      <div className="action-buttons">
+                                        {user.role === 'warehouse_manager' && (editingVariantReorder === v.variant_id ? (
+                                          <>
+                                            <button className="btn btn-sm btn-success" onClick={() => saveVariantReorder(p.product_id, v.variant_id)}>Save</button>
+                                            <button className="btn btn-sm" onClick={() => setEditingVariantReorder(null)}>Cancel</button>
+                                          </>
+                                        ) : <button className="btn btn-sm" onClick={() => startEditVariantReorder(v)}>Set Reorder Level</button>)}
+                                        <button className="btn btn-sm btn-danger" onClick={() => handleDeleteVariant(p.product_id, v.variant_id)}>Delete</button>
+                                      </div>
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -250,7 +286,7 @@ export default function ProductManagement() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>

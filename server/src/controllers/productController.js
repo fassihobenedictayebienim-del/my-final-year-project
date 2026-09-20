@@ -1,6 +1,7 @@
 const Product = require('../models/Product');
 const ProductVariant = require('../models/ProductVariant');
 const ProductLocationSetting = require('../models/ProductLocationSetting');
+const VariantLocationSetting = require('../models/VariantLocationSetting');
 const Inventory = require('../models/Inventory');
 const Shipment = require('../models/Shipment');
 const { sequelize } = require('../config/db');
@@ -40,6 +41,14 @@ async function listVariantsForProduct(req, res) {
     const inventoryRows = variantIds.length
       ? await Inventory.findAll({ where: { ...where, variant_id: variantIds } })
       : [];
+    const settingWhere = {};
+    if (req.user.role === 'warehouse_manager') settingWhere.warehouse_id = req.user.warehouse_id;
+    if (req.user.role === 'store_manager') settingWhere.store_id = req.user.store_id;
+    const variantSettings = Object.keys(settingWhere).length && variantIds.length
+      ? await VariantLocationSetting.findAll({ where: { ...settingWhere, variant_id: variantIds } })
+      : [];
+    const reorderMap = {};
+    variantSettings.forEach((setting) => { reorderMap[setting.variant_id] = setting.reorder_level; });
 
     const result = variants.map((v) => {
       const rows = inventoryRows.filter((i) => i.variant_id === v.variant_id);
@@ -47,6 +56,7 @@ async function listVariantsForProduct(req, res) {
         variant_id: v.variant_id, color: v.color, size: v.size,
         inventory: rows.map((r) => ({ warehouse_id: r.warehouse_id, store_id: r.store_id, quantity: r.quantity })),
         quantity: rows.reduce((sum, r) => sum + r.quantity, 0),
+        reorder_level: reorderMap[v.variant_id] ?? 5,
       };
     });
 

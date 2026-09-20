@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { Fragment, useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useToast } from '../context/ToastContext';
 import api from '../services/api';
@@ -12,6 +12,8 @@ export default function StoreInventoryPage() {
   const [expandedProduct, setExpandedProduct] = useState(null);
   const [editingReorder, setEditingReorder] = useState(null);
   const [reorderValue, setReorderValue] = useState('');
+  const [editingVariantReorder, setEditingVariantReorder] = useState(null);
+  const [variantReorderValue, setVariantReorderValue] = useState('');
 
   // eslint-disable-next-line react-hooks/exhaustive-deps -- Load store inventory once when the page opens.
   useEffect(() => { fetchData(); }, []);
@@ -34,9 +36,9 @@ export default function StoreInventoryPage() {
     return <span className="stock-badge in-stock">🟢 In Stock</span>;
   }
 
-  function variantBadge(qty) {
+  function variantBadge(qty, reorderLevel) {
     if (qty === 0) return <span className="stock-badge out-of-stock">🔴 Out</span>;
-    if (qty <= 5) return <span className="stock-badge low-stock">🟠 Low</span>;
+    if (reorderLevel > 0 && qty <= reorderLevel) return <span className="stock-badge low-stock">🟠 Low</span>;
     return <span className="stock-badge in-stock">🟢 OK</span>;
   }
 
@@ -53,6 +55,22 @@ export default function StoreInventoryPage() {
       fetchData();
     } catch (err) {
       showToast(err.response?.data?.message || 'Failed to update reorder level.', 'error');
+    }
+  }
+
+  function startEditVariantReorder(variant) {
+    setEditingVariantReorder(variant.variant_id);
+    setVariantReorderValue(variant.reorder_level);
+  }
+
+  async function saveVariantReorder(variant_id) {
+    try {
+      await api.put(`/inventory/variant-reorder-level/${variant_id}`, { reorder_level: Number(variantReorderValue) });
+      setEditingVariantReorder(null);
+      fetchData();
+      showToast('Variant reorder level updated.');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Failed to update the variant reorder level.', 'error');
     }
   }
 
@@ -90,8 +108,8 @@ export default function StoreInventoryPage() {
             <thead><tr><th>Product</th><th>Unit Price</th><th>Total Stock</th><th>Reorder Level</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
               {filtered.map((row) => (
-                <>
-                  <tr key={row.product_id}>
+                <Fragment key={row.product_id}>
+                  <tr>
                     <td>{row.product_name}</td>
                     <td>{formatCurrency(row.unit_price)}</td>
                     <td>{row.total_quantity}</td>
@@ -121,7 +139,7 @@ export default function StoreInventoryPage() {
                     <tr>
                       <td colSpan={6} style={{ background: 'var(--color-bg)', padding: 16 }}>
                         <table className="data-table">
-                          <thead><tr><th>Colour</th><th>Size</th><th>Unit Price</th><th>Quantity</th><th>Status</th></tr></thead>
+                          <thead><tr><th>Colour</th><th>Size</th><th>Unit Price</th><th>Quantity</th><th>Variant Reorder Level</th><th>Status</th><th>Actions</th></tr></thead>
                           <tbody>
                             {row.variants.map((v) => (
                               <tr key={v.variant_id}>
@@ -129,7 +147,20 @@ export default function StoreInventoryPage() {
                                 <td>{v.size}</td>
                                 <td>{formatCurrency(v.unit_price)}</td>
                                 <td>{v.quantity}</td>
-                                <td>{variantBadge(v.quantity)}</td>
+                                <td>
+                                  {editingVariantReorder === v.variant_id ? (
+                                    <input className="form-input" type="number" min="0" value={variantReorderValue} onChange={(e) => setVariantReorderValue(e.target.value)} style={{ width: 80 }} />
+                                  ) : v.reorder_level}
+                                </td>
+                                <td>{variantBadge(v.quantity, v.reorder_level)}</td>
+                                <td>
+                                  {editingVariantReorder === v.variant_id ? (
+                                    <div className="action-buttons">
+                                      <button className="btn btn-sm btn-success" onClick={() => saveVariantReorder(v.variant_id)}>Save</button>
+                                      <button className="btn btn-sm" onClick={() => setEditingVariantReorder(null)}>Cancel</button>
+                                    </div>
+                                  ) : <button className="btn btn-sm" onClick={() => startEditVariantReorder(v)}>Set Reorder Level</button>}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -137,7 +168,7 @@ export default function StoreInventoryPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
