@@ -1,6 +1,18 @@
 const bcrypt = require('bcrypt');
 const User = require('../models/User');
+const Warehouse = require('../models/Warehouse');
+const Store = require('../models/Store');
 const logActivity = require('../utils/activityLogger');
+
+async function findOrCreateLocation(Model, typedLocation) {
+  const normalized = typedLocation.trim().toLowerCase();
+  const locations = await Model.findAll();
+  const existing = locations.find((location) =>
+    location.name.trim().toLowerCase() === normalized || location.location.trim().toLowerCase() === normalized
+  );
+  if (existing) return existing;
+  return Model.create({ name: typedLocation.trim(), location: typedLocation.trim() });
+}
 
 async function listUsers(req, res) {
   try {
@@ -20,7 +32,7 @@ async function updateUser(req, res) {
     const user = await User.findByPk(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found.' });
 
-    const { name, email, phone, role, warehouse_id, store_id } = req.body;
+    const { name, email, phone, role, warehouse_id, store_id, new_location } = req.body;
 
     if (email && email !== user.email) {
       const existing = await User.findOne({ where: { email } });
@@ -28,13 +40,27 @@ async function updateUser(req, res) {
     }
 
     const newRole = role ?? user.role;
+    const typedLocation = new_location?.trim();
+    if (typedLocation && (newRole === 'administrator' || typedLocation.length > 100)) {
+      return res.status(400).json({ message: 'Enter a location of up to 100 characters for a warehouse or store manager.' });
+    }
     let newWarehouseId = null, newStoreId = null;
     if (newRole === 'warehouse_manager') {
-      newWarehouseId = warehouse_id ?? user.warehouse_id;
-      if (!newWarehouseId) return res.status(400).json({ message: 'A Warehouse Manager must be linked to a warehouse.' });
+      if (typedLocation) {
+        const warehouse = await findOrCreateLocation(Warehouse, typedLocation);
+        newWarehouseId = warehouse.warehouse_id;
+      } else {
+        newWarehouseId = warehouse_id ?? user.warehouse_id;
+      }
+      if (!newWarehouseId) return res.status(400).json({ message: 'Select or enter a warehouse location.' });
     } else if (newRole === 'store_manager') {
-      newStoreId = store_id ?? user.store_id;
-      if (!newStoreId) return res.status(400).json({ message: 'A Store Manager must be linked to a store.' });
+      if (typedLocation) {
+        const store = await findOrCreateLocation(Store, typedLocation);
+        newStoreId = store.store_id;
+      } else {
+        newStoreId = store_id ?? user.store_id;
+      }
+      if (!newStoreId) return res.status(400).json({ message: 'Select or enter a store location.' });
     }
 
     const oldName = user.name;

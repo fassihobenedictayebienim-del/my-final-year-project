@@ -1,7 +1,19 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Warehouse = require('../models/Warehouse');
+const Store = require('../models/Store');
 const logActivity = require('../utils/activityLogger');
+
+async function findOrCreateLocation(Model, typedLocation) {
+  const normalized = typedLocation.trim().toLowerCase();
+  const locations = await Model.findAll();
+  const existing = locations.find((location) =>
+    location.name.trim().toLowerCase() === normalized || location.location.trim().toLowerCase() === normalized
+  );
+  if (existing) return existing;
+  return Model.create({ name: typedLocation.trim(), location: typedLocation.trim() });
+}
 
 async function login(req, res) {
   try {
@@ -38,7 +50,7 @@ async function login(req, res) {
 
 async function register(req, res) {
   try {
-    const { name, email, phone, password, role, warehouse_id, store_id } = req.body;
+    const { name, email, phone, password, role, warehouse_id, store_id, new_location } = req.body;
     if (!name || !email || !password || !role) {
       return res.status(400).json({ message: 'Name, email, password, and role are required.' });
     }
@@ -48,20 +60,40 @@ async function register(req, res) {
     if (password.length < 8) {
       return res.status(400).json({ message: 'Password must be at least 8 characters.' });
     }
-    if (role === 'warehouse_manager' && !Number.isInteger(Number(warehouse_id))) {
-      return res.status(400).json({ message: 'A warehouse manager must be assigned to a valid warehouse.' });
-    }
-    if (role === 'store_manager' && !Number.isInteger(Number(store_id))) {
-      return res.status(400).json({ message: 'A store manager must be assigned to a valid store.' });
-    }
     const existing = await User.findOne({ where: { email } });
     if (existing) return res.status(409).json({ message: 'A user with this email already exists.' });
+
+    const typedLocation = new_location?.trim();
+    if (typedLocation && (role === 'administrator' || typedLocation.length > 100)) {
+      return res.status(400).json({ message: 'Enter a location of up to 100 characters for a warehouse or store manager.' });
+    }
+
+    let resolvedWarehouseId = null;
+    let resolvedStoreId = null;
+    if (role === 'warehouse_manager') {
+      if (typedLocation) {
+        const warehouse = await findOrCreateLocation(Warehouse, typedLocation);
+        resolvedWarehouseId = warehouse.warehouse_id;
+      } else if (warehouse_id !== undefined && warehouse_id !== '' && Number.isInteger(Number(warehouse_id))) {
+        resolvedWarehouseId = Number(warehouse_id);
+      }
+      if (!resolvedWarehouseId) return res.status(400).json({ message: 'Select or enter a warehouse location.' });
+    }
+    if (role === 'store_manager') {
+      if (typedLocation) {
+        const store = await findOrCreateLocation(Store, typedLocation);
+        resolvedStoreId = store.store_id;
+      } else if (store_id !== undefined && store_id !== '' && Number.isInteger(Number(store_id))) {
+        resolvedStoreId = Number(store_id);
+      }
+      if (!resolvedStoreId) return res.status(400).json({ message: 'Select or enter a store location.' });
+    }
 
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = await User.create({
       name, email, phone: phone || null, password: hashedPassword, role,
-      warehouse_id: role === 'warehouse_manager' ? warehouse_id : null,
-      store_id: role === 'store_manager' ? store_id : null,
+      warehouse_id: resolvedWarehouseId,
+      store_id: resolvedStoreId,
     });
 
     await logActivity(req.user, 'USER_CREATED', `${req.user.name || 'Administrator'} created account for ${name} (${role}).`);

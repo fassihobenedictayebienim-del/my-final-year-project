@@ -6,10 +6,11 @@ import api from '../services/api';
 export default function UserManagementPage() {
   const { showToast } = useToast();
   const [users, setUsers] = useState([]);
+  const [locations, setLocations] = useState({ warehouses: [], stores: [] });
   const [loading, setLoading] = useState(true);
 
   const [showForm, setShowForm] = useState(false);
-  const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '', role: 'store_manager', warehouse_id: '', store_id: '' });
+  const [formData, setFormData] = useState({ name: '', email: '', phone: '', password: '', role: 'store_manager', warehouse_id: '', store_id: '', new_location: '' });
 
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
@@ -20,8 +21,12 @@ export default function UserManagementPage() {
   async function fetchUsers() {
     setLoading(true);
     try {
-      const response = await api.get('/users');
-      setUsers(response.data.users);
+      const [usersResponse, locationsResponse] = await Promise.all([
+        api.get('/users'),
+        api.get('/locations'),
+      ]);
+      setUsers(usersResponse.data.users);
+      setLocations(locationsResponse.data);
     } catch (_err) {
       showToast('Failed to load users.', 'error');
     } finally {
@@ -35,10 +40,11 @@ export default function UserManagementPage() {
       const payload = { name: formData.name, email: formData.email, phone: formData.phone, password: formData.password, role: formData.role };
       if (formData.role === 'warehouse_manager') payload.warehouse_id = formData.warehouse_id;
       if (formData.role === 'store_manager') payload.store_id = formData.store_id;
+      if (formData.new_location.trim()) payload.new_location = formData.new_location.trim();
 
       await api.post('/auth/register', payload);
       showToast(`Account created for ${formData.name}.`);
-      setFormData({ name: '', email: '', phone: '', password: '', role: 'store_manager', warehouse_id: '', store_id: '' });
+      setFormData({ name: '', email: '', phone: '', password: '', role: 'store_manager', warehouse_id: '', store_id: '', new_location: '' });
       setShowForm(false);
       fetchUsers();
     } catch (err) {
@@ -48,7 +54,7 @@ export default function UserManagementPage() {
 
   function startEdit(u) {
   setEditingId(u.user_id);
-  setEditData({ name: u.name, email: u.email, phone: u.phone || '', role: u.role, warehouse_id: u.warehouse_id || '', store_id: u.store_id || '' });
+  setEditData({ name: u.name, email: u.email, phone: u.phone || '', role: u.role, warehouse_id: u.warehouse_id || '', store_id: u.store_id || '', new_location: '' });
 }
 
   async function handleSaveEdit(user_id) {
@@ -56,6 +62,7 @@ export default function UserManagementPage() {
       const payload = { name: editData.name, email: editData.email, phone: editData.phone, role: editData.role };
       if (editData.role === 'warehouse_manager') payload.warehouse_id = editData.warehouse_id;
       if (editData.role === 'store_manager') payload.store_id = editData.store_id;
+      if (editData.new_location.trim()) payload.new_location = editData.new_location.trim();
 
       await api.put(`/users/${user_id}`, payload);
       showToast('User updated successfully.');
@@ -77,6 +84,16 @@ export default function UserManagementPage() {
     if (role === 'administrator') return <span className="badge badge-fulfilled">{roleLabel(role)}</span>;
     if (role === 'warehouse_manager') return <span className="badge badge-approved">{roleLabel(role)}</span>;
     return <span className="badge badge-pending">{roleLabel(role)}</span>;
+  }
+
+  function locationLabel(user) {
+    if (user.warehouse_id) {
+      return locations.warehouses.find((warehouse) => String(warehouse.warehouse_id) === String(user.warehouse_id))?.location || '—';
+    }
+    if (user.store_id) {
+      return locations.stores.find((store) => String(store.store_id) === String(user.store_id))?.location || '—';
+    }
+    return '—';
   }
 
   return (
@@ -125,12 +142,14 @@ export default function UserManagementPage() {
           </div>
           {formData.role === 'warehouse_manager' && (
             <div className="form-row">
-              <div><label className="form-label">Warehouse ID</label><input className="form-input" type="number" placeholder="1" value={formData.warehouse_id} onChange={(e) => setFormData({ ...formData, warehouse_id: e.target.value })} required /></div>
+              <div><label className="form-label">Warehouse Location</label><select className="form-input" value={formData.warehouse_id} onChange={(e) => setFormData({ ...formData, warehouse_id: e.target.value })}><option value="">Select warehouse location</option>{locations.warehouses.map((warehouse) => <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>{warehouse.location}</option>)}</select></div>
+              <div><label className="form-label">Or enter a warehouse location</label><input className="form-input" placeholder="e.g. Ofankor" value={formData.new_location} onChange={(e) => setFormData({ ...formData, new_location: e.target.value })} /><p className="form-hint">Existing names are reused; a new name creates a location.</p></div>
             </div>
           )}
           {formData.role === 'store_manager' && (
             <div className="form-row">
-              <div><label className="form-label">Store ID</label><input className="form-input" type="number" placeholder="1 or 2" value={formData.store_id} onChange={(e) => setFormData({ ...formData, store_id: e.target.value })} required /></div>
+              <div><label className="form-label">Store Location</label><select className="form-input" value={formData.store_id} onChange={(e) => setFormData({ ...formData, store_id: e.target.value })}><option value="">Select store location</option>{locations.stores.map((store) => <option key={store.store_id} value={store.store_id}>{store.location}</option>)}</select></div>
+              <div><label className="form-label">Or enter a store location</label><input className="form-input" placeholder="e.g. Ofankor" value={formData.new_location} onChange={(e) => setFormData({ ...formData, new_location: e.target.value })} /><p className="form-hint">Existing names are reused; a new name creates a location.</p></div>
             </div>
           )}
           <button type="submit" className="btn btn-primary">Create Account</button>
@@ -161,8 +180,8 @@ export default function UserManagementPage() {
                         </select>
                       </td>
                       <td>
-                        {editData.role === 'warehouse_manager' && <input className="form-input" type="number" placeholder="Warehouse ID" value={editData.warehouse_id} onChange={(e) => setEditData({ ...editData, warehouse_id: e.target.value })} style={{ width: 90 }} />}
-                        {editData.role === 'store_manager' && <input className="form-input" type="number" placeholder="Store ID" value={editData.store_id} onChange={(e) => setEditData({ ...editData, store_id: e.target.value })} style={{ width: 90 }} />}
+                        {editData.role === 'warehouse_manager' && <><select className="form-input" value={editData.warehouse_id} onChange={(e) => setEditData({ ...editData, warehouse_id: e.target.value, new_location: '' })} style={{ width: 140 }}><option value="">Select warehouse location</option>{locations.warehouses.map((warehouse) => <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>{warehouse.location}</option>)}</select><input className="form-input" placeholder="Enter new location" value={editData.new_location} onChange={(e) => setEditData({ ...editData, new_location: e.target.value, warehouse_id: '' })} style={{ width: 150, marginTop: 6 }} /></>}
+                        {editData.role === 'store_manager' && <><select className="form-input" value={editData.store_id} onChange={(e) => setEditData({ ...editData, store_id: e.target.value, new_location: '' })} style={{ width: 140 }}><option value="">Select store location</option>{locations.stores.map((store) => <option key={store.store_id} value={store.store_id}>{store.location}</option>)}</select><input className="form-input" placeholder="Enter new location" value={editData.new_location} onChange={(e) => setEditData({ ...editData, new_location: e.target.value, store_id: '' })} style={{ width: 150, marginTop: 6 }} /></>}
                         {editData.role === 'administrator' && <span style={{ color: 'var(--color-text-muted)' }}>—</span>}
                       </td>
                       <td>{new Date(u.created_at).toLocaleDateString()}</td>
@@ -179,7 +198,7 @@ export default function UserManagementPage() {
                       <td>{u.email}</td>
                       <td>{u.phone || '—'}</td>
                       <td>{roleBadge(u.role)}</td>
-                      <td>{u.warehouse_id ? `Warehouse ${u.warehouse_id}` : u.store_id ? `Store ${u.store_id}` : '—'}</td>
+                      <td>{locationLabel(u)}</td>
                       <td>{new Date(u.created_at).toLocaleDateString()}</td>
                       <td><button className="btn btn-sm" onClick={() => startEdit(u)}>Edit</button></td>
                     </>

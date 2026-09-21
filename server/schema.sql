@@ -182,7 +182,7 @@ CREATE TABLE activity_logs (
 
 CREATE INDEX idx_activitylog_created ON activity_logs(created_at);
 
-INSERT INTO warehouses (name, location) VALUES ('Main Warehouse', 'Kantamanto, Accra');
+INSERT INTO warehouses (name, location) VALUES ('Kantamanto', 'Kantamanto');
 INSERT INTO stores (name, location) VALUES
-  ('Store 1', 'Kantamanto, Accra'),
-  ('Store 2', 'Kantamanto, Accra');
+  ('Kantamanto', 'Kantamanto'),
+  ('Adenta', 'Adenta');
