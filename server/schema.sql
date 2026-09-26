@@ -132,7 +132,7 @@ CREATE TABLE stock_requests (
   store_id      INT UNSIGNED NOT NULL,
   variant_id    INT UNSIGNED NOT NULL,
   quantity      INT UNSIGNED NOT NULL CHECK (quantity > 0),
-  status        ENUM('pending', 'approved', 'rejected', 'fulfilled') NOT NULL DEFAULT 'pending',
+  status        ENUM('pending', 'approved', 'rejected', 'fulfilled', 'cancelled') NOT NULL DEFAULT 'pending',
   request_date  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_requests_store   FOREIGN KEY (store_id)   REFERENCES stores(store_id)             ON DELETE CASCADE,
   CONSTRAINT fk_requests_variant FOREIGN KEY (variant_id) REFERENCES product_variants(variant_id) ON DELETE RESTRICT
