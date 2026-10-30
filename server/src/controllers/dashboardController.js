@@ -1,268 +1,308 @@
-const { Op } = require('sequelize');
-const Sale = require('../models/Sale');
-const Shipment = require('../models/Shipment');
-const StockTransfer = require('../models/StockTransfer');
-const StockRequest = require('../models/StockRequest');
-const Inventory = require('../models/Inventory');
-const ProductVariant = require('../models/ProductVariant');
-const Product = require('../models/Product');
-const Warehouse = require('../models/Warehouse');
-const Store = require('../models/Store');
-const { getLocationProductSummary } = require('../utils/inventorySummaryHelper');
-
-function dayKey(date) { return new Date(date).toISOString().slice(0, 10); }
-
+const { Op } = require("sequelize");
+const Sale = require("../models/Sale");
+const Shipment = require("../models/Shipment");
+const StockTransfer = require("../models/StockTransfer");
+const StockRequest = require("../models/StockRequest");
+const Inventory = require("../models/Inventory");
+const Product = require("../models/Product");
+const Warehouse = require("../models/Warehouse");
+const Store = require("../models/Store");
+const {
+  getLocationProductSummary,
+} = require("../utils/inventorySummaryHelper");
+function dayKey(date) {
+  return new Date(date).toISOString().slice(0, 10);
+}
 function dateRangeDays(days) {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days + 1);
   cutoff.setHours(0, 0, 0, 0);
-  const labels = [];
-  for (let i = 0; i < days; i++) {
+  const labels = Array.from({ length: days }, (_, i) => {
     const d = new Date(cutoff);
     d.setDate(d.getDate() + i);
-    labels.push(dayKey(d));
-  }
+    return dayKey(d);
+  });
   return { cutoff, labels };
 }
-
-function stockStatusCounts(summaryRows) {
+function stockStatusCounts(rows) {
   return {
-    in_stock: summaryRows.filter((r) => r.status === 'ok').length,
-    low_stock: summaryRows.filter((r) => r.status === 'low').length,
-    out_of_stock: summaryRows.filter((r) => r.status === 'out').length,
+    in_stock: rows.filter((r) => r.status === "ok").length,
+    low_stock: rows.filter((r) => r.status === "low").length,
+    out_of_stock: rows.filter((r) => r.status === "out").length,
   };
 }
-
-// Flattens every individually-flagged variant out of a location's product
-// summary, REGARDLESS of whether the parent product itself is flagged.
-// This is the fix: a product whose total is healthy can still contain a
-// variant sitting at 0, and that variant must still surface here.
-function extractVariantAlerts(summaryRows) {
-  const alerts = summaryRows.flatMap((p) =>
-    p.variants.filter((v) => v.flag).map((v) => ({
-      product_id: p.product_id,
-      product_name: p.product_name,
-      variant_id: v.variant_id,
-      color: v.color,
-      size: v.size,
-      quantity: v.quantity,
-      status: v.flag, // 'out' | 'low'
-    }))
-  );
-  // out-of-stock first, then low-stock
-  return alerts.sort((a, b) => (a.status === b.status ? 0 : a.status === 'out' ? -1 : 1));
+function alerts(rows) {
+  return rows
+    .filter((r) => r.status !== "ok")
+    .sort((a, b) => (a.status === b.status ? 0 : a.status === "out" ? -1 : 1));
+}
+function salesTrend(sales, labels) {
+  const map = Object.fromEntries(labels.map((label) => [label, 0]));
+  sales.forEach((sale) => {
+    const key = dayKey(sale.sale_date);
+    if (key in map) map[key] += Number(sale.total_price);
+  });
+  return labels.map((date) => ({
+    date,
+    revenue: Math.round(map[date] * 100) / 100,
+  }));
+}
+function topProducts(sales) {
+  const map = {};
+  sales.forEach((sale) => {
+    const id = sale.product_id;
+    if (!map[id])
+      map[id] = { product_name: sale.Product?.product_name, quantity_sold: 0 };
+    map[id].quantity_sold += sale.quantity;
+  });
+  return Object.values(map)
+    .sort((a, b) => b.quantity_sold - a.quantity_sold)
+    .slice(0, 5);
 }
 
-// ================= ADMINISTRATOR =================
 async function getAdminDashboard(req, res) {
   try {
     const days = Math.min(Math.max(Number(req.query.days) || 30, 7), 90);
     const { cutoff, labels } = dateRangeDays(days);
-
-    const totalProducts = await Product.count();
-
-    const allInventory = await Inventory.findAll({ include: [{ model: ProductVariant, include: [Product] }] });
-    const total_inventory_quantity = allInventory.reduce((sum, r) => sum + r.quantity, 0);
-    const total_inventory_value = allInventory.reduce((sum, r) => sum + r.quantity * Number(r.ProductVariant.Product.unit_price), 0);
-
-    const total_sales = Number(await Sale.sum('total_price')) || 0;
-    const number_of_stores = await Store.count();
-
-    const warehouses = await Warehouse.findAll();
-    const stores = await Store.findAll();
-    const allSummaries = [];
-    for (const w of warehouses) allSummaries.push(...(await getLocationProductSummary('warehouse', w.warehouse_id)));
-    for (const s of stores) allSummaries.push(...(await getLocationProductSummary('store', s.store_id)));
-    const low_stock_count = allSummaries.filter((r) => r.status === 'low' || r.status === 'out').length;
-
-    // Variant-level counts, aggregated across every location
-    const allVariantAlerts = extractVariantAlerts(allSummaries);
-    const variants_needing_attention = allVariantAlerts.length;
-    const out_of_stock_variants = allVariantAlerts.filter((v) => v.status === 'out').length;
-
-    const salesInRange = await Sale.findAll({ where: { sale_date: { [Op.gte]: cutoff } } });
-    const trendMap = {};
-    labels.forEach((l) => { trendMap[l] = 0; });
-    salesInRange.forEach((s) => { const k = dayKey(s.sale_date); if (k in trendMap) trendMap[k] += Number(s.total_price); });
-    const sales_trend = labels.map((l) => ({ date: l, revenue: Math.round(trendMap[l] * 100) / 100 }));
-
-    const salesByStoreMap = {};
-    salesInRange.forEach((s) => { salesByStoreMap[s.store_id] = (salesByStoreMap[s.store_id] || 0) + Number(s.total_price); });
-    const sales_by_store = stores.map((s) => ({ store_name: s.name, revenue: Math.round((salesByStoreMap[s.store_id] || 0) * 100) / 100 }));
-
+    const [warehouses, stores, allInventory] = await Promise.all([
+      Warehouse.findAll(),
+      Store.findAll({ where: { active: true } }),
+      Inventory.findAll({ include: [Product] }),
+    ]);
+    const activeStoreIds = stores.map((s) => s.store_id);
+    const salesInRange = await Sale.findAll({
+      where: { sale_date: { [Op.gte]: cutoff }, store_id: activeStoreIds },
+      include: [Product],
+    });
+    const summaries = [];
+    for (const w of warehouses)
+      summaries.push(
+        ...(await getLocationProductSummary("warehouse", w.warehouse_id)),
+      );
+    for (const s of stores)
+      summaries.push(...(await getLocationProductSummary("store", s.store_id)));
+    const low = alerts(summaries);
     const inventory_by_location = [
-      { location_name: warehouses[0]?.name || 'Warehouse', quantity: allInventory.filter((r) => r.warehouse_id).reduce((s, r) => s + r.quantity, 0) },
-      ...stores.map((s) => ({ location_name: s.name, quantity: allInventory.filter((r) => r.store_id === s.store_id).reduce((sum, r) => sum + r.quantity, 0) })),
+      {
+        location_name: warehouses[0]?.name || "Warehouse",
+        quantity: allInventory
+          .filter((r) => r.warehouse_id)
+          .reduce((n, r) => n + r.quantity, 0),
+      },
+      ...stores.map((s) => ({
+        location_name: s.name,
+        quantity: allInventory
+          .filter((r) => r.store_id === s.store_id)
+          .reduce((n, r) => n + r.quantity, 0),
+      })),
     ];
-
-    const salesWithVariant = await Sale.findAll({
-      where: { sale_date: { [Op.gte]: cutoff } },
-      include: [{ model: ProductVariant, include: [Product] }],
-    });
-    const productQtyMap = {}, productNameMap = {};
-    salesWithVariant.forEach((s) => {
-      const pid = s.ProductVariant.product_id;
-      productQtyMap[pid] = (productQtyMap[pid] || 0) + s.quantity;
-      productNameMap[pid] = s.ProductVariant.Product.product_name;
-    });
-    const top_selling_products = Object.entries(productQtyMap)
-      .map(([pid, qty]) => ({ product_name: productNameMap[pid], quantity_sold: qty }))
-      .sort((a, b) => b.quantity_sold - a.quantity_sold)
-      .slice(0, 5);
-
-    const stock_status = stockStatusCounts(allSummaries);
-
     res.json({
       kpis: {
-        total_products: totalProducts, total_inventory_quantity, total_inventory_value, total_sales,
-        number_of_stores, low_stock_count, variants_needing_attention, out_of_stock_variants,
+        total_products: await Product.count(),
+        total_inventory_quantity: allInventory.reduce(
+          (n, r) => n + r.quantity,
+          0,
+        ),
+        total_inventory_value: allInventory.reduce(
+          (n, r) => n + r.quantity * Number(r.Product.unit_price),
+          0,
+        ),
+        total_sales: salesInRange.reduce(
+          (n, r) => n + Number(r.total_price),
+          0,
+        ),
+        number_of_stores: stores.length,
+        low_stock_count: low.length,
+        out_of_stock_products: low.filter((r) => r.status === "out").length,
       },
-      sales_trend, sales_by_store, inventory_by_location, top_selling_products, stock_status,
+      sales_trend: salesTrend(salesInRange, labels),
+      sales_by_store: stores.map((s) => ({
+        store_name: s.name,
+        revenue: salesInRange
+          .filter((sale) => sale.store_id === s.store_id)
+          .reduce((n, sale) => n + Number(sale.total_price), 0),
+      })),
+      inventory_by_location,
+      top_selling_products: topProducts(salesInRange),
+      stock_status: stockStatusCounts(summaries),
       days_range: days,
     });
   } catch (error) {
-    console.error('Admin dashboard error:', error);
-    res.status(500).json({ message: 'Something went wrong while building the dashboard.' });
+    console.error("Admin dashboard error:", error);
+    res
+      .status(500)
+      .json({ message: "Something went wrong while building the dashboard." });
   }
 }
 
-// ================= WAREHOUSE MANAGER =================
 async function getWarehouseDashboard(req, res) {
   try {
     const warehouse_id = req.user.warehouse_id;
-    if (!warehouse_id) return res.status(400).json({ message: 'Your account is not linked to a warehouse.' });
-
+    if (!warehouse_id)
+      return res
+        .status(400)
+        .json({ message: "Your account is not linked to a warehouse." });
     const days = Math.min(Math.max(Number(req.query.days) || 30, 7), 90);
     const { cutoff, labels } = dateRangeDays(days);
-
-    const summary = await getLocationProductSummary('warehouse', warehouse_id);
-    const total_warehouse_stock = summary.reduce((s, r) => s + r.total_quantity, 0);
-
-    const inventoryRows = await Inventory.findAll({ where: { warehouse_id }, include: [{ model: ProductVariant, include: [Product] }] });
-    const warehouse_inventory_value = inventoryRows.reduce((s, r) => s + r.quantity * Number(r.ProductVariant.Product.unit_price), 0);
-
-    const pending_store_requests = await StockRequest.count({ where: { status: 'pending' } });
-    const products_below_reorder = summary.filter((r) => r.status === 'low' || r.status === 'out').length;
-
-    const variant_alerts = extractVariantAlerts(summary);
-    const variants_needing_attention = variant_alerts.length;
-
-    const recentTransfersRaw = await StockTransfer.findAll({ where: { warehouse_id }, order: [['transfer_date', 'DESC']], limit: 5 });
-    const recent_transfers = recentTransfersRaw.map((t) => ({
-      transfer_id: t.transfer_id, store_id: t.store_id, quantity: t.quantity_transferred, status: t.status, date: t.transfer_date,
-    }));
-
-    const shipmentsInRange = await Shipment.findAll({ where: { warehouse_id, date_received: { [Op.gte]: cutoff } } });
-    const transfersInRange = await StockTransfer.findAll({ where: { warehouse_id, transfer_date: { [Op.gte]: cutoff } } });
-    const movementMap = {};
-    labels.forEach((l) => { movementMap[l] = { received: 0, dispatched: 0 }; });
-    shipmentsInRange.forEach((s) => { const k = dayKey(s.date_received); if (k in movementMap) movementMap[k].received += s.quantity; });
-    transfersInRange.forEach((t) => { const k = dayKey(t.transfer_date); if (k in movementMap) movementMap[k].dispatched += t.quantity_transferred; });
-    const stock_movement_trend = labels.map((l) => ({ date: l, received: movementMap[l].received, dispatched: movementMap[l].dispatched }));
-
-    const stores = await Store.findAll();
-    const transferByStore = {};
-    transfersInRange.forEach((t) => { transferByStore[t.store_id] = (transferByStore[t.store_id] || 0) + t.quantity_transferred; });
-    const stock_transferred_to_stores = stores.map((s) => ({ store_name: s.name, quantity: transferByStore[s.store_id] || 0 }));
-
-    const transferRequestIds = transfersInRange.map((t) => t.request_id);
-    const relatedRequests = transferRequestIds.length
-      ? await StockRequest.findAll({ where: { request_id: transferRequestIds }, include: [{ model: ProductVariant, include: [Product] }] })
-      : [];
-    const requestMap = {};
-    relatedRequests.forEach((r) => { requestMap[r.request_id] = r; });
-    const movedQtyMap = {}, movedNameMap = {};
-    transfersInRange.forEach((t) => {
-      const req = requestMap[t.request_id];
-      if (!req) return;
-      const pid = req.ProductVariant.product_id;
-      movedQtyMap[pid] = (movedQtyMap[pid] || 0) + t.quantity_transferred;
-      movedNameMap[pid] = req.ProductVariant.Product.product_name;
+    const [
+      summary,
+      inventoryRows,
+      sales,
+      shipments,
+      transfers,
+      stores,
+      pendingRequests,
+    ] = await Promise.all([
+      getLocationProductSummary("warehouse", warehouse_id),
+      Inventory.findAll({ where: { warehouse_id }, include: [Product] }),
+      Sale.findAll({
+        where: { sale_date: { [Op.gte]: cutoff } },
+        include: [Product],
+      }),
+      Shipment.findAll({
+        where: { warehouse_id, date_received: { [Op.gte]: cutoff } },
+      }),
+      StockTransfer.findAll({
+        where: { warehouse_id, transfer_date: { [Op.gte]: cutoff } },
+      }),
+      Store.findAll(),
+      StockRequest.findAll({
+        where: { status: "pending" },
+        include: [Product],
+        order: [["request_date", "DESC"]],
+      }),
+    ]);
+    const movement = Object.fromEntries(
+      labels.map((label) => [label, { received: 0, dispatched: 0 }]),
+    );
+    shipments.forEach((s) => {
+      const k = dayKey(s.date_received);
+      if (movement[k]) movement[k].received += s.quantity;
     });
-    const top_moving_products = Object.entries(movedQtyMap)
-      .map(([pid, qty]) => ({ product_name: movedNameMap[pid], quantity_moved: qty }))
-      .sort((a, b) => b.quantity_moved - a.quantity_moved)
-      .slice(0, 5);
-
-    const warehouse_low_stock_products = summary.filter((r) => r.status === 'low' || r.status === 'out');
-    const stock_status = stockStatusCounts(summary);
-
+    transfers.forEach((t) => {
+      const k = dayKey(t.transfer_date);
+      if (movement[k]) movement[k].dispatched += t.quantity_transferred;
+    });
+    const transferProducts = await StockTransfer.findAll({
+      where: { warehouse_id, transfer_date: { [Op.gte]: cutoff } },
+      include: [Product],
+    });
+    const moveMap = {};
+    transferProducts.forEach((t) => {
+      if (!moveMap[t.product_id])
+        moveMap[t.product_id] = {
+          product_name: t.Product.product_name,
+          quantity_moved: 0,
+        };
+      moveMap[t.product_id].quantity_moved += t.quantity_transferred;
+    });
+    const product_alerts = alerts(summary);
     res.json({
       kpis: {
-        total_warehouse_stock, warehouse_inventory_value, pending_store_requests,
-        products_below_reorder, recent_transfers_count: recent_transfers.length, variants_needing_attention,
+        total_warehouse_stock: summary.reduce(
+          (n, r) => n + r.total_quantity,
+          0,
+        ),
+        warehouse_inventory_value: inventoryRows.reduce(
+          (n, r) => n + r.quantity * Number(r.Product.unit_price),
+          0,
+        ),
+        pending_store_requests: pendingRequests.length,
+        products_below_reorder: product_alerts.length,
+        recent_transfers_count: transfers.length,
       },
-      recent_transfers, stock_movement_trend, stock_transferred_to_stores, top_moving_products,
-      warehouse_low_stock_products, variant_alerts, stock_status, days_range: days,
+      pending_store_requests: pendingRequests.map((request) => ({
+        request_id: request.request_id,
+        product_name: request.Product?.product_name,
+        quantity: request.quantity,
+      })),
+      recent_transfers: transfers
+        .slice(0, 5)
+        .map((t) => ({
+          transfer_id: t.transfer_id,
+          store_id: t.store_id,
+          quantity: t.quantity_transferred,
+          status: t.status,
+          date: t.transfer_date,
+        })),
+      stock_movement_trend: labels.map((date) => ({ date, ...movement[date] })),
+      stock_transferred_to_stores: stores.map((s) => ({
+        store_name: s.name,
+        quantity: transfers
+          .filter((t) => t.store_id === s.store_id)
+          .reduce((n, t) => n + t.quantity_transferred, 0),
+      })),
+      top_moving_products: Object.values(moveMap)
+        .sort((a, b) => b.quantity_moved - a.quantity_moved)
+        .slice(0, 5),
+      warehouse_low_stock_products: product_alerts,
+      product_alerts,
+      stock_status: stockStatusCounts(summary),
+      days_range: days,
     });
   } catch (error) {
-    console.error('Warehouse dashboard error:', error);
-    res.status(500).json({ message: 'Something went wrong while building the dashboard.' });
+    console.error("Warehouse dashboard error:", error);
+    res
+      .status(500)
+      .json({ message: "Something went wrong while building the dashboard." });
   }
 }
 
-// ================= STORE MANAGER =================
 async function getStoreDashboard(req, res) {
   try {
     const store_id = req.user.store_id;
-    if (!store_id) return res.status(400).json({ message: 'Your account is not linked to a store.' });
-
+    if (!store_id)
+      return res
+        .status(400)
+        .json({ message: "Your account is not linked to a store." });
     const days = Math.min(Math.max(Number(req.query.days) || 30, 7), 90);
     const { cutoff, labels } = dateRangeDays(days);
-
-    const summary = await getLocationProductSummary('store', store_id);
-    const current_store_stock = summary.reduce((s, r) => s + r.total_quantity, 0);
-
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const todaySales = await Sale.findAll({ where: { store_id, sale_date: { [Op.gte]: todayStart } } });
-    const todays_revenue = todaySales.reduce((s, r) => s + Number(r.total_price), 0);
-
-    const low_stock_products_count = summary.filter((r) => r.status === 'low' || r.status === 'out').length;
-    const pending_stock_requests = await StockRequest.count({ where: { store_id, status: 'pending' } });
-
-    const variant_alerts = extractVariantAlerts(summary);
-    const variants_needing_attention = variant_alerts.length;
-
-    const salesInRange = await Sale.findAll({ where: { store_id, sale_date: { [Op.gte]: cutoff } } });
-    const trendMap = {};
-    labels.forEach((l) => { trendMap[l] = 0; });
-    salesInRange.forEach((s) => { const k = dayKey(s.sale_date); if (k in trendMap) trendMap[k] += Number(s.total_price); });
-    const sales_trend = labels.map((l) => ({ date: l, revenue: Math.round(trendMap[l] * 100) / 100 }));
-
-    const salesWithVariant = await Sale.findAll({
-      where: { store_id, sale_date: { [Op.gte]: cutoff } },
-      include: [{ model: ProductVariant, include: [Product] }],
-    });
-    const qtyMap = {}, nameMap = {};
-    salesWithVariant.forEach((s) => {
-      const pid = s.ProductVariant.product_id;
-      qtyMap[pid] = (qtyMap[pid] || 0) + s.quantity;
-      nameMap[pid] = s.ProductVariant.Product.product_name;
-    });
-    const top_selling_products = Object.entries(qtyMap)
-      .map(([pid, qty]) => ({ product_name: nameMap[pid], quantity_sold: qty }))
-      .sort((a, b) => b.quantity_sold - a.quantity_sold)
-      .slice(0, 5);
-
-    const current_stock_by_product = [...summary].sort((a, b) => b.total_quantity - a.total_quantity).slice(0, 8)
-      .map((r) => ({ product_name: r.product_name, quantity: r.total_quantity }));
-
-    const products_below_reorder = summary.filter((r) => r.status === 'low' || r.status === 'out');
-    const stock_status = stockStatusCounts(summary);
-
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const [summary, salesInRange, todaySales, pending] = await Promise.all([
+      getLocationProductSummary("store", store_id),
+      Sale.findAll({
+        where: { store_id, sale_date: { [Op.gte]: cutoff } },
+        include: [Product],
+      }),
+      Sale.findAll({ where: { store_id, sale_date: { [Op.gte]: today } } }),
+      StockRequest.count({ where: { store_id, status: "pending" } }),
+    ]);
+    const product_alerts = alerts(summary);
     res.json({
       kpis: {
-        current_store_stock, todays_sales_count: todaySales.length, todays_revenue,
-        low_stock_products_count, pending_stock_requests, variants_needing_attention,
+        current_store_stock: summary.reduce((n, r) => n + r.total_quantity, 0),
+        todays_sales_count: todaySales.length,
+        todays_revenue: todaySales.reduce(
+          (n, s) => n + Number(s.total_price),
+          0,
+        ),
+        low_stock_products_count: product_alerts.length,
+        pending_stock_requests: pending,
       },
-      sales_trend, top_selling_products, current_stock_by_product, products_below_reorder,
-      variant_alerts, stock_status, days_range: days,
+      sales_trend: salesTrend(salesInRange, labels),
+      top_selling_products: topProducts(salesInRange),
+      current_stock_by_product: [...summary]
+        .sort((a, b) => b.total_quantity - a.total_quantity)
+        .slice(0, 8)
+        .map((r) => ({
+          product_name: r.product_name,
+          quantity: r.total_quantity,
+        })),
+      products_below_reorder: product_alerts,
+      product_alerts,
+      stock_status: stockStatusCounts(summary),
+      days_range: days,
     });
   } catch (error) {
-    console.error('Store dashboard error:', error);
-    res.status(500).json({ message: 'Something went wrong while building the dashboard.' });
+    console.error("Store dashboard error:", error);
+    res
+      .status(500)
+      .json({ message: "Something went wrong while building the dashboard." });
   }
 }
-
-module.exports = { getAdminDashboard, getWarehouseDashboard, getStoreDashboard };
+module.exports = {
+  getAdminDashboard,
+  getWarehouseDashboard,
+  getStoreDashboard,
+};

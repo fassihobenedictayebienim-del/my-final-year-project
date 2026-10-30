@@ -1,429 +1,290 @@
-const StockRequest = require('../models/StockRequest');
-const StockTransfer = require('../models/StockTransfer');
-const ProductVariant = require('../models/ProductVariant');
-const Product = require('../models/Product');
-const Inventory = require('../models/Inventory');
-const { sequelize } = require('../config/db');
-const logActivity = require('../utils/activityLogger');
+const StockRequest = require("../models/StockRequest");
+const StockTransfer = require("../models/StockTransfer");
+const Product = require("../models/Product");
+const Inventory = require("../models/Inventory");
+const { sequelize } = require("../config/db");
+const logActivity = require("../utils/activityLogger");
+
+function validQuantity(value) {
+  return Number.isInteger(Number(value)) && Number(value) > 0;
+}
+async function requestWithProduct(id, options = {}) {
+  return StockRequest.findByPk(id, { ...options, include: [Product] });
+}
 
 async function createStockRequest(req, res) {
   try {
-    const { variant_id, quantity } = req.body;
     const store_id = req.user.store_id;
-
-    if (!store_id) {
-      return res.status(400).json({
-        message: 'Your account is not linked to a store.',
-      });
-    }
-
-    if (!variant_id || !quantity || quantity <= 0) {
-      return res.status(400).json({
-        message: 'variant_id and a positive quantity are required.',
-      });
-    }
-
-    const variant = await ProductVariant.findByPk(variant_id, {
-      include: [Product],
-    });
-
-    if (!variant) {
-      return res.status(404).json({
-        message: 'Variant not found.',
-      });
-    }
-
+    const product_id = String(req.body.product_id || "").trim();
+    const quantity = Number(req.body.quantity);
+    if (!store_id)
+      return res
+        .status(400)
+        .json({ message: "Your account is not linked to a store." });
+    if (!product_id || !validQuantity(quantity))
+      return res
+        .status(400)
+        .json({
+          message:
+            "product_id and a positive whole-number quantity are required.",
+        });
+    const product = await Product.findByPk(product_id);
+    if (!product)
+      return res.status(404).json({ message: "Product not found." });
     const stockRequest = await StockRequest.create({
       store_id,
-      variant_id,
+      product_id,
       quantity,
-      status: 'pending',
+      status: "pending",
     });
-
     await logActivity(
       req.user,
-      'STOCK_REQUEST_CREATED',
-      `Store ${store_id} requested ${quantity} unit(s) of "${variant.Product.product_name}" (${variant.color}/${variant.size}).`
+      "STOCK_REQUEST_CREATED",
+      `Store ${store_id} requested ${quantity} unit(s) of "${product.product_name}".`,
     );
-
-    res.status(201).json({
-      message: 'Stock request submitted.',
-      stockRequest,
-    });
+    res.status(201).json({ message: "Stock request submitted.", stockRequest });
   } catch (error) {
-    console.error('Create stock request error:', error);
-
-    res.status(500).json({
-      message: 'Something went wrong while submitting the request.',
-    });
+    console.error("Create stock request error:", error);
+    res
+      .status(500)
+      .json({ message: "Something went wrong while submitting the request." });
   }
 }
-
 
 async function listStockRequests(req, res) {
   try {
-    const where = {};
-
-    if (req.user.role === 'store_manager') {
-      where.store_id = req.user.store_id;
-    }
-
-    const requests = await StockRequest.findAll({
-      where,
-      include: [
-        {
-          model: ProductVariant,
-          include: [Product],
-        },
-      ],
-      order: [['request_date', 'DESC']],
+    const where =
+      req.user.role === "store_manager" ? { store_id: req.user.store_id } : {};
+    res.json({
+      requests: await StockRequest.findAll({
+        where,
+        include: [Product],
+        order: [["request_date", "DESC"]],
+      }),
     });
-
-    res.json({ requests });
   } catch (error) {
-    console.error('List stock requests error:', error);
-
-    res.status(500).json({
-      message: 'Something went wrong while fetching requests.',
-    });
+    console.error("List stock requests error:", error);
+    res
+      .status(500)
+      .json({ message: "Something went wrong while fetching requests." });
   }
 }
 
-
 async function approveAndDispatch(req, res) {
   const t = await sequelize.transaction();
-
   try {
-    const { id } = req.params;
     const warehouse_id = req.user.warehouse_id;
-    const approved_by = req.user.user_id;
-
-    const stockRequest = await StockRequest.findByPk(id, {
-      include: [
-        {
-          model: ProductVariant,
-          include: [Product],
-        },
-      ],
+    if (!warehouse_id)
+      throw Object.assign(
+        new Error("Your account is not linked to a warehouse."),
+        { status: 400 },
+      );
+    const stockRequest = await requestWithProduct(req.params.id, {
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
-
-    if (!stockRequest) {
-      await t.rollback();
-
-      return res.status(404).json({
-        message: 'Stock request not found.',
+    if (!stockRequest)
+      throw Object.assign(new Error("Stock request not found."), {
+        status: 404,
       });
-    }
-
-    if (stockRequest.status !== 'pending') {
-      await t.rollback();
-
-      return res.status(409).json({
-        message: `This request has already been ${stockRequest.status}.`,
-      });
-    }
-
+    if (stockRequest.status !== "pending")
+      throw Object.assign(
+        new Error(`This request has already been ${stockRequest.status}.`),
+        { status: 409 },
+      );
     const inventoryRow = await Inventory.findOne({
       where: {
-        variant_id: stockRequest.variant_id,
+        product_id: stockRequest.product_id,
         warehouse_id,
+        store_id: null,
       },
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
-
-    if (!inventoryRow || inventoryRow.quantity < stockRequest.quantity) {
-      await t.rollback();
-
-      return res.status(400).json({
-        message: 'Insufficient stock at the warehouse to fulfil this request.',
-        available: inventoryRow ? inventoryRow.quantity : 0,
-        requested: stockRequest.quantity,
-      });
-    }
-
+    if (!inventoryRow || inventoryRow.quantity < stockRequest.quantity)
+      throw Object.assign(
+        new Error(
+          "Insufficient stock at the warehouse to fulfil this request.",
+        ),
+        { status: 400, available: inventoryRow?.quantity || 0 },
+      );
     inventoryRow.quantity -= stockRequest.quantity;
-
-    await inventoryRow.save({
-      transaction: t,
-    });
-
-    const transfer = await StockTransfer.create({
-      request_id: stockRequest.request_id,
-      warehouse_id,
-      store_id: stockRequest.store_id,
-      approved_by,
-      quantity_transferred: stockRequest.quantity,
-      status: 'dispatched',
-    }, {
-      transaction: t,
-    });
-
-    stockRequest.status = 'approved';
-
-    await stockRequest.save({
-      transaction: t,
-    });
-
+    await inventoryRow.save({ transaction: t });
+    const transfer = await StockTransfer.create(
+      {
+        request_id: stockRequest.request_id,
+        product_id: stockRequest.product_id,
+        warehouse_id,
+        store_id: stockRequest.store_id,
+        approved_by: req.user.user_id,
+        quantity_transferred: stockRequest.quantity,
+        status: "dispatched",
+      },
+      { transaction: t },
+    );
+    stockRequest.status = "approved";
+    await stockRequest.save({ transaction: t });
     await t.commit();
-
     await logActivity(
       req.user,
-      'REQUEST_APPROVED',
-      `Request #${id} approved and dispatched — ${stockRequest.quantity} unit(s) of ${stockRequest.ProductVariant.Product.product_name} (${stockRequest.ProductVariant.color}/${stockRequest.ProductVariant.size}) to Store ${stockRequest.store_id}.`
+      "REQUEST_APPROVED",
+      `Request #${stockRequest.request_id} approved and dispatched — ${stockRequest.quantity} unit(s) of ${stockRequest.Product.product_name} to Store ${stockRequest.store_id}.`,
     );
-
     res.json({
-      message: 'Request approved and stock dispatched.',
+      message: "Request approved and stock dispatched.",
       transfer,
       remaining_warehouse_quantity: inventoryRow.quantity,
     });
   } catch (error) {
     await t.rollback();
-
-    console.error('Approve/dispatch error:', error);
-
-    res.status(500).json({
-      message: 'Something went wrong while approving the request.',
-    });
+    console.error("Approve/dispatch error:", error);
+    res
+      .status(error.status || 500)
+      .json({
+        message:
+          error.message || "Something went wrong while approving the request.",
+        ...(error.available !== undefined
+          ? { available: error.available }
+          : {}),
+      });
   }
 }
-
 
 async function rejectRequest(req, res) {
   try {
-    const stockRequest = await StockRequest.findByPk(req.params.id);
-
-    if (!stockRequest) {
-      return res.status(404).json({
-        message: 'Stock request not found.',
-      });
-    }
-
-    if (stockRequest.status !== 'pending') {
-      return res.status(409).json({
-        message: `This request has already been ${stockRequest.status}.`,
-      });
-    }
-
-    stockRequest.status = 'rejected';
-
-    await stockRequest.save();
-
+    const request = await StockRequest.findByPk(req.params.id);
+    if (!request)
+      return res.status(404).json({ message: "Stock request not found." });
+    if (request.status !== "pending")
+      return res
+        .status(409)
+        .json({ message: `This request has already been ${request.status}.` });
+    request.status = "rejected";
+    await request.save();
     await logActivity(
       req.user,
-      'REQUEST_REJECTED',
-      `Request #${req.params.id} rejected.`
+      "REQUEST_REJECTED",
+      `Request #${request.request_id} rejected.`,
     );
-
-    res.json({
-      message: 'Request rejected.',
-      stockRequest,
-    });
+    res.json({ message: "Request rejected.", stockRequest: request });
   } catch (error) {
-    console.error('Reject request error:', error);
-
-    res.status(500).json({
-      message: 'Something went wrong while rejecting the request.',
-    });
+    console.error("Reject request error:", error);
+    res
+      .status(500)
+      .json({ message: "Something went wrong while rejecting the request." });
   }
 }
 
-
-/*
- * Cancel a pending stock request.
- *
- * A store manager can only cancel a request belonging
- * to their own store, and only while the request is pending.
- */
 async function cancelStockRequest(req, res) {
   try {
-    const { id } = req.params;
     const store_id = req.user.store_id;
-
-    if (!store_id) {
-      return res.status(400).json({
-        message: 'Your account is not linked to a store.',
-      });
-    }
-
-    const stockRequest = await StockRequest.findByPk(id, {
-      include: [
-        {
-          model: ProductVariant,
-          include: [Product],
-        },
-      ],
-    });
-
-    if (!stockRequest) {
-      return res.status(404).json({
-        message: 'Stock request not found.',
-      });
-    }
-
-    // Make sure the request belongs to the logged-in store.
-    if (stockRequest.store_id !== store_id) {
-      return res.status(403).json({
-        message: 'You can only cancel requests made by your own store.',
-      });
-    }
-
-    // Only pending requests can be cancelled.
-    if (stockRequest.status !== 'pending') {
-      return res.status(409).json({
-        message: `This request cannot be cancelled because it is already ${stockRequest.status}.`,
-      });
-    }
-
-    stockRequest.status = 'cancelled';
-
-    await stockRequest.save();
-
-    const productName =
-      stockRequest.ProductVariant?.Product?.product_name || 'Unknown product';
-
-    const color =
-      stockRequest.ProductVariant?.color || 'Unknown colour';
-
-    const size =
-      stockRequest.ProductVariant?.size || 'Unknown size';
-
+    const request = await requestWithProduct(req.params.id);
+    if (!request)
+      return res.status(404).json({ message: "Stock request not found." });
+    if (request.store_id !== store_id)
+      return res
+        .status(403)
+        .json({
+          message: "You can only cancel requests made by your own store.",
+        });
+    if (request.status !== "pending")
+      return res
+        .status(409)
+        .json({
+          message: `This request cannot be cancelled because it is already ${request.status}.`,
+        });
+    request.status = "cancelled";
+    await request.save();
     await logActivity(
       req.user,
-      'REQUEST_CANCELLED',
-      `Request #${id} cancelled — ${stockRequest.quantity} unit(s) of ${productName} (${color}/${size}) from Store ${store_id}.`
+      "REQUEST_CANCELLED",
+      `Request #${request.request_id} cancelled — ${request.quantity} unit(s) of ${request.Product.product_name}.`,
     );
-
     res.json({
-      message: 'Stock request cancelled successfully.',
-      stockRequest,
+      message: "Stock request cancelled successfully.",
+      stockRequest: request,
     });
   } catch (error) {
-    console.error('Cancel stock request error:', error);
-
-    res.status(500).json({
-      message: 'Something went wrong while cancelling the request.',
-    });
+    console.error("Cancel stock request error:", error);
+    res
+      .status(500)
+      .json({ message: "Something went wrong while cancelling the request." });
   }
 }
-
 
 async function confirmReceipt(req, res) {
   const t = await sequelize.transaction();
-
   try {
-    const { id } = req.params;
     const store_id = req.user.store_id;
-
-    const stockRequest = await StockRequest.findByPk(id, {
-      include: [
-        {
-          model: ProductVariant,
-          include: [Product],
-        },
-      ],
+    const request = await requestWithProduct(req.params.id, {
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
-
-    if (!stockRequest) {
-      await t.rollback();
-
-      return res.status(404).json({
-        message: 'Stock request not found.',
+    if (!request)
+      throw Object.assign(new Error("Stock request not found."), {
+        status: 404,
       });
-    }
-
-    if (stockRequest.store_id !== store_id) {
-      await t.rollback();
-
-      return res.status(403).json({
-        message: 'This request does not belong to your store.',
-      });
-    }
-
-    if (stockRequest.status !== 'approved') {
-      await t.rollback();
-
-      return res.status(409).json({
-        message: `This request is not awaiting receipt (current status: ${stockRequest.status}).`,
-      });
-    }
-
+    if (request.store_id !== store_id)
+      throw Object.assign(
+        new Error("This request does not belong to your store."),
+        { status: 403 },
+      );
+    if (request.status !== "approved")
+      throw Object.assign(
+        new Error(
+          `This request is not awaiting receipt (current status: ${request.status}).`,
+        ),
+        { status: 409 },
+      );
     const transfer = await StockTransfer.findOne({
-      where: {
-        request_id: id,
-        status: 'dispatched',
-      },
+      where: { request_id: request.request_id, status: "dispatched" },
       transaction: t,
       lock: t.LOCK.UPDATE,
     });
-
-    if (!transfer) {
-      await t.rollback();
-
-      return res.status(404).json({
-        message: 'No dispatched transfer found for this request.',
-      });
-    }
-
+    if (!transfer)
+      throw Object.assign(
+        new Error("No dispatched transfer found for this request."),
+        { status: 404 },
+      );
     const [inventoryRow] = await Inventory.findOrCreate({
-      where: {
-        variant_id: stockRequest.variant_id,
-        store_id,
-      },
+      where: { product_id: request.product_id, store_id, warehouse_id: null },
       defaults: {
+        product_id: request.product_id,
+        store_id,
+        warehouse_id: null,
         quantity: 0,
       },
       transaction: t,
     });
-
     inventoryRow.quantity += transfer.quantity_transferred;
-
-    await inventoryRow.save({
-      transaction: t,
-    });
-
-    transfer.status = 'received';
+    await inventoryRow.save({ transaction: t });
+    transfer.status = "received";
     transfer.received_date = new Date();
-
-    await transfer.save({
-      transaction: t,
-    });
-
-    stockRequest.status = 'fulfilled';
-
-    await stockRequest.save({
-      transaction: t,
-    });
-
+    await transfer.save({ transaction: t });
+    request.status = "fulfilled";
+    await request.save({ transaction: t });
     await t.commit();
-
     await logActivity(
       req.user,
-      'RECEIPT_CONFIRMED',
-      `Store ${store_id} confirmed receipt of ${transfer.quantity_transferred} unit(s) of ${stockRequest.ProductVariant.Product.product_name} (${stockRequest.ProductVariant.color}/${stockRequest.ProductVariant.size}).`
+      "RECEIPT_CONFIRMED",
+      `Store ${store_id} confirmed receipt of ${transfer.quantity_transferred} unit(s) of ${request.Product.product_name}.`,
     );
-
     res.json({
-      message: 'Stock receipt confirmed.',
+      message: "Stock receipt confirmed.",
       transfer,
       new_store_quantity: inventoryRow.quantity,
     });
   } catch (error) {
     await t.rollback();
-
-    console.error('Confirm receipt error:', error);
-
-    res.status(500).json({
-      message: 'Something went wrong while confirming receipt.',
-    });
+    console.error("Confirm receipt error:", error);
+    res
+      .status(error.status || 500)
+      .json({
+        message:
+          error.message || "Something went wrong while confirming receipt.",
+      });
   }
 }
-
 
 module.exports = {
   createStockRequest,

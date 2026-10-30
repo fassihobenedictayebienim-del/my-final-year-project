@@ -1,11 +1,11 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback } from "react";
 
 const ToastContext = createContext(null);
 
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
-  const showToast = useCallback((message, type = 'success') => {
+  const showToast = useCallback((message, type = "success") => {
     const id = Date.now() + Math.random();
     setToasts((t) => [...t, { id, message, type }]);
     setTimeout(() => {
@@ -18,7 +18,12 @@ export function ToastProvider({ children }) {
       {children}
       <div className="toast-container">
         {toasts.map((t) => (
-          <div key={t.id} className={`toast ${t.type === 'error' ? 'error' : ''}`}>{t.message}</div>
+          <div
+            key={t.id}
+            className={`toast ${t.type === "error" ? "error" : ""}`}
+          >
+            {t.message}
+          </div>
         ))}
       </div>
     </ToastContext.Provider>

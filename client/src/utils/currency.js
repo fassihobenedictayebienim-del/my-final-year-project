@@ -1,4 +1,4 @@
-const formatter = new Intl.NumberFormat('en-GH', {
+const formatter = new Intl.NumberFormat("en-GH", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });

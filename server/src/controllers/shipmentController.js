@@ -1,275 +1,160 @@
-const Shipment = require('../models/Shipment');
-const ShipmentBatch = require('../models/ShipmentBatch');
-const Inventory = require('../models/Inventory');
-const ProductVariant = require('../models/ProductVariant');
-const Product = require('../models/Product');
-const { sequelize } = require('../config/db');
-const logActivity = require('../utils/activityLogger');
+const { Op } = require("sequelize");
+const Shipment = require("../models/Shipment");
+const ShipmentBatch = require("../models/ShipmentBatch");
+const Inventory = require("../models/Inventory");
+const Product = require("../models/Product");
+const ProductLocationSetting = require("../models/ProductLocationSetting");
+const { sequelize } = require("../config/db");
+const logActivity = require("../utils/activityLogger");
 
 function requestError(message, status = 400) {
   const error = new Error(message);
   error.status = status;
   return error;
 }
-
-function positiveInteger(value, fieldName) {
+function positiveInteger(value, field) {
   const number = Number(value);
-  if (!Number.isInteger(number) || number <= 0) {
-    throw requestError(`${fieldName} must be a positive whole number.`);
-  }
+  if (!Number.isInteger(number) || number <= 0) throw requestError(`${field} must be a positive whole number.`);
   return number;
 }
-
+function nonNegativeInteger(value, field) {
+  const number = Number(value);
+  if (!Number.isInteger(number) || number < 0) throw requestError(`${field} must be a whole number of zero or more.`);
+  return number;
+}
 function receivedDate(value) {
   if (!value) return new Date();
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    throw requestError('date_received must be a valid date.');
-  }
+  if (Number.isNaN(date.getTime())) throw requestError("date_received must be a valid date.");
   return date;
 }
-
-function variantKey(productId, color, size) {
-  return `${productId}::${color.trim().toLowerCase()}::${size.trim().toLowerCase()}`;
-}
-
-async function addToWarehouseInventory(variantId, warehouseId, quantity, transaction) {
-  const [inventoryRow] = await Inventory.findOrCreate({
-    where: { variant_id: variantId, warehouse_id: warehouseId, store_id: null },
-    defaults: { variant_id: variantId, warehouse_id: warehouseId, store_id: null, quantity: 0 },
+async function addToWarehouseInventory(product_id, warehouse_id, quantity, transaction) {
+  const [row] = await Inventory.findOrCreate({
+    where: { product_id, warehouse_id, store_id: null },
+    defaults: { product_id, warehouse_id, store_id: null, quantity: 0 },
     transaction,
   });
-
-  inventoryRow.quantity += quantity;
-  await inventoryRow.save({ transaction });
-  return inventoryRow;
+  row.quantity += quantity;
+  await row.save({ transaction });
+  return row;
 }
-
-// POST /api/shipments
-// body: { variant_id, quantity, date_received }
-async function createShipment(req, res) {
-  try {
-    const warehouseId = req.user.warehouse_id;
-    if (!warehouseId) throw requestError('Your account is not linked to a warehouse.');
-
-    const variantId = positiveInteger(req.body.variant_id, 'variant_id');
-    const quantity = positiveInteger(req.body.quantity, 'quantity');
-    const dateReceived = receivedDate(req.body.date_received);
-
-    const result = await sequelize.transaction(async (transaction) => {
-      const variant = await ProductVariant.findByPk(variantId, { include: [Product], transaction });
-      if (!variant) throw requestError('Variant not found.', 404);
-
-      const shipment = await Shipment.create({
-        variant_id: variantId,
-        warehouse_id: warehouseId,
-        quantity,
-        date_received: dateReceived,
-      }, { transaction });
-
-      const inventoryRow = await addToWarehouseInventory(variantId, warehouseId, quantity, transaction);
-      return { shipment, variant, inventoryRow };
-    });
-
-    try {
-      await logActivity(req.user, 'SHIPMENT_RECORDED', `Shipment of ${quantity} unit(s) of "${result.variant.Product.product_name}" (${result.variant.color}/${result.variant.size}) recorded.`);
-    } catch (logError) {
-      console.error('Shipment activity logging failed:', logError.message);
-    }
-
-    return res.status(201).json({
-      message: 'Shipment recorded and inventory updated.',
-      shipment: result.shipment,
-      new_warehouse_quantity: result.inventoryRow.quantity,
-    });
-  } catch (error) {
-    console.error('Create shipment error:', error);
-    return res.status(error.status || 500).json({
-      message: error.status ? error.message : 'Something went wrong while recording the shipment.',
-    });
+function cleanLine(line, index) {
+  const type = line?.type === "new" ? "new" : line?.type === "existing" ? "existing" : null;
+  if (!type) throw requestError(`items[${index}].type must be existing or new.`);
+  const product_id = String(line?.product_id || "").trim();
+  if (!product_id) throw requestError(`items[${index}].product_id is required.`);
+  const cleaned = { type, product_id, quantity: positiveInteger(line?.quantity, `items[${index}].quantity`) };
+  if (type === "new") {
+    cleaned.product_name = String(line?.product_name || "").trim();
+    cleaned.unit_price = Number(line?.unit_price);
+    cleaned.reorder_level = nonNegativeInteger(line?.reorder_level, `items[${index}].reorder_level`);
+    if (!cleaned.product_name || !Number.isFinite(cleaned.unit_price) || cleaned.unit_price < 0)
+      throw requestError(`New product ${product_id} requires a name and non-negative price.`);
   }
+  return cleaned;
 }
 
-// POST /api/shipments/batch
-// body: {
-//   shipment_reference,
-//   date_received,
-//   items: [
-//     { variant_id, quantity },
-//     { product_id, color, size, quantity }
-//   ]
-// }
-// A line without variant_id creates a new colour/size variant under product_id.
+// ShipmentBatch only groups lines internally. Its identifier is never returned
+// or rendered as a shipment reference.
 async function createBatchShipment(req, res) {
   try {
-    const warehouseId = req.user.warehouse_id;
-    const shipmentReference = String(req.body.shipment_reference || '').trim();
-    const dateReceived = receivedDate(req.body.date_received);
-    const items = req.body.items;
-
-    if (!warehouseId) throw requestError('Your account is not linked to a warehouse.');
-    if (!shipmentReference) throw requestError('shipment_reference is required.');
-    if (shipmentReference.length > 50) throw requestError('shipment_reference cannot exceed 50 characters.');
-    if (!Array.isArray(items) || items.length === 0) throw requestError('At least one shipment item is required.');
-
-    const existingItems = [];
-    const newVariantItems = [];
-    const usedKeys = new Set();
-
-    items.forEach((item, index) => {
-      const quantity = positiveInteger(item?.quantity, `items[${index}].quantity`);
-
-      if (item?.variant_id) {
-        const variantId = positiveInteger(item.variant_id, `items[${index}].variant_id`);
-        const key = `variant:${variantId}`;
-        if (usedKeys.has(key)) throw requestError('Each variant can appear only once in a batch.');
-        usedKeys.add(key);
-        existingItems.push({ variant_id: variantId, quantity });
-        return;
-      }
-
-      const productId = String(item?.product_id || '').trim();
-      const color = String(item?.color || '').trim();
-      const size = String(item?.size || '').trim();
-
-      if (!productId || !color || !size) {
-        throw requestError(`items[${index}] needs an existing variant_id or product_id, color, and size.`);
-      }
-
-      const key = `new:${variantKey(productId, color, size)}`;
-      if (usedKeys.has(key)) throw requestError(`Duplicate new variant: ${color} / ${size}.`);
-      usedKeys.add(key);
-      newVariantItems.push({ product_id: productId, color, size, quantity });
-    });
-
-    const result = await sequelize.transaction(async (transaction) => {
-      const existingVariantIds = existingItems.map((item) => item.variant_id);
-      const existingVariants = existingVariantIds.length
-        ? await ProductVariant.findAll({ where: { variant_id: existingVariantIds }, include: [Product], transaction })
-        : [];
-
-      if (existingVariants.length !== existingVariantIds.length) {
-        const foundIds = new Set(existingVariants.map((variant) => variant.variant_id));
-        const missingIds = existingVariantIds.filter((id) => !foundIds.has(id));
-        throw requestError(`One or more variants were not found: ${missingIds.join(', ')}.`, 404);
-      }
-
-      const productIds = [...new Set(newVariantItems.map((item) => item.product_id))];
-      const products = productIds.length
-        ? await Product.findAll({ where: { product_id: productIds }, transaction })
-        : [];
-
-      if (products.length !== productIds.length) {
-        const foundIds = new Set(products.map((product) => product.product_id));
-        const missingIds = productIds.filter((id) => !foundIds.has(id));
-        throw requestError(`One or more products were not found: ${missingIds.join(', ')}.`, 404);
-      }
-
-      const variantsById = new Map(existingVariants.map((variant) => [variant.variant_id, variant]));
-      const productsById = new Map(products.map((product) => [product.product_id, product]));
-
-      for (const item of newVariantItems) {
-        const duplicate = await ProductVariant.findOne({
-          where: { product_id: item.product_id, color: item.color, size: item.size },
-          transaction,
-        });
-        if (duplicate) {
-          throw requestError(`Variant ${item.color} / ${item.size} already exists for product ${item.product_id}. Select it from the table instead.`);
+    const warehouse_id = req.user.warehouse_id;
+    if (!warehouse_id) throw requestError("Your account is not linked to a warehouse.");
+    const date_received = receivedDate(req.body.date_received);
+    if (!Array.isArray(req.body.items) || !req.body.items.length) throw requestError("Add at least one product line.");
+    const items = req.body.items.map(cleanLine);
+    if (new Set(items.map((item) => item.product_id)).size !== items.length)
+      throw requestError("Each product can appear only once in a shipment.");
+    const inventory_updates = await sequelize.transaction(async (transaction) => {
+      const found = await Product.findAll({ where: { product_id: items.map((item) => item.product_id) }, transaction });
+      const products = new Map(found.map((product) => [product.product_id, product]));
+      for (const item of items) {
+        const existing = products.get(item.product_id);
+        if (item.type === "existing") {
+          if (!existing) throw requestError(`Product ${item.product_id} was not found.`, 404);
+          continue;
         }
-      }
-
-      const batch = await ShipmentBatch.create({
-        warehouse_id: warehouseId,
-        shipment_reference: shipmentReference,
-        date_received: dateReceived,
-      }, { transaction });
-
-      const shipmentLines = [...existingItems];
-
-      for (const item of newVariantItems) {
-        const variant = await ProductVariant.create({
+        if (existing) throw requestError(`A product with ID "${item.product_id}" already exists.`, 409);
+        const product = await Product.create({
           product_id: item.product_id,
-          color: item.color,
-          size: item.size,
+          product_name: item.product_name,
+          unit_price: item.unit_price,
         }, { transaction });
-        variant.Product = productsById.get(item.product_id);
-        variantsById.set(variant.variant_id, variant);
-        shipmentLines.push({ variant_id: variant.variant_id, quantity: item.quantity });
+        products.set(product.product_id, product);
+        await ProductLocationSetting.create({ product_id: product.product_id, warehouse_id, reorder_level: item.reorder_level }, { transaction });
       }
-
-      const shipments = [];
-      const inventoryUpdates = [];
-
-      for (const line of shipmentLines) {
+      const batch = await ShipmentBatch.create({ warehouse_id, date_received }, { transaction });
+      const updates = [];
+      for (const item of items) {
         const shipment = await Shipment.create({
           shipment_batch_id: batch.shipment_batch_id,
-          variant_id: line.variant_id,
-          warehouse_id: warehouseId,
-          quantity: line.quantity,
-          date_received: dateReceived,
+          product_id: item.product_id,
+          warehouse_id,
+          quantity: item.quantity,
+          date_received,
         }, { transaction });
-
-        const inventoryRow = await addToWarehouseInventory(line.variant_id, warehouseId, line.quantity, transaction);
-        const variant = variantsById.get(line.variant_id);
-        shipments.push(shipment);
-        inventoryUpdates.push({
-          variant_id: line.variant_id,
-          product_name: variant.Product.product_name,
-          color: variant.color,
-          size: variant.size,
-          quantity_received: line.quantity,
-          new_warehouse_quantity: inventoryRow.quantity,
+        const inventory = await addToWarehouseInventory(item.product_id, warehouse_id, item.quantity, transaction);
+        updates.push({
+          shipment_id: shipment.shipment_id,
+          product_id: item.product_id,
+          product_name: products.get(item.product_id).product_name,
+          quantity_received: item.quantity,
+          new_warehouse_quantity: inventory.quantity,
+          is_new_product: item.type === "new",
         });
       }
-
-      return { batch, shipments, inventoryUpdates };
+      return updates;
     });
-
-    try {
-      await logActivity(req.user, 'SHIPMENT_BATCH_RECORDED', `Shipment batch "${shipmentReference}" recorded with ${result.shipments.length} variant line item(s).`);
-    } catch (logError) {
-      console.error('Shipment batch activity logging failed:', logError.message);
-    }
-
-    return res.status(201).json({
-      message: 'Shipment batch recorded and inventory updated.',
-      batch: result.batch,
-      shipments: result.shipments,
-      inventory_updates: result.inventoryUpdates,
-    });
+    await logActivity(req.user, "SHIPMENT_RECEIVED", `Received ${inventory_updates.length} product line item(s) into warehouse stock.`);
+    res.status(201).json({ message: "Shipment received and inventory updated.", inventory_updates });
   } catch (error) {
-    console.error('Create batch shipment error:', error);
-    if (error.name === 'SequelizeUniqueConstraintError') {
-      return res.status(409).json({ message: 'That shipment reference or variant already exists.' });
-    }
-    return res.status(error.status || 500).json({
-      message: error.status ? error.message : 'Something went wrong while recording the shipment batch.',
-    });
+    console.error("Receive shipment error:", error);
+    res.status(error.status || 500).json({ message: error.status ? error.message : "Something went wrong while receiving the shipment." });
   }
 }
 
-// GET /api/shipments
 async function listShipments(req, res) {
   try {
-    const where = {};
-    if (req.user.role === 'warehouse_manager') {
-      if (!req.user.warehouse_id) return res.status(400).json({ message: 'Your account is not linked to a warehouse.' });
-      where.warehouse_id = req.user.warehouse_id;
+    const where = req.user.role === "warehouse_manager" ? { warehouse_id: req.user.warehouse_id } : {};
+    const { start_date, end_date } = req.query;
+    if (start_date || end_date) {
+      where.date_received = {};
+      if (start_date) where.date_received[Op.gte] = new Date(`${start_date}T00:00:00`);
+      if (end_date) where.date_received[Op.lte] = new Date(`${end_date}T23:59:59.999`);
     }
-
     const shipments = await Shipment.findAll({
       where,
-      include: [
-        { model: ProductVariant, include: [Product] },
-        { model: ShipmentBatch, required: false },
-      ],
-      order: [['date_received', 'DESC'], ['shipment_id', 'DESC']],
+      include: [{ model: Product }],
+      order: [["date_received", "DESC"], ["shipment_id", "DESC"]],
     });
-    return res.json({ shipments });
+    const historyWhere = req.user.role === "warehouse_manager" ? { warehouse_id: req.user.warehouse_id } : {};
+    const history = await Shipment.findAll({
+      where: historyWhere,
+      attributes: ["shipment_id", "product_id"],
+      order: [["date_received", "ASC"], ["shipment_id", "ASC"]],
+    });
+    const firstProducts = new Set();
+    const firstReceipt = new Set();
+    for (const row of history) {
+      if (!firstProducts.has(row.product_id)) {
+        firstProducts.add(row.product_id);
+        firstReceipt.add(`${row.product_id}:${row.shipment_id}`);
+      }
+    }
+    res.json({
+      shipments: shipments.map((shipment) => ({
+        shipment_id: shipment.shipment_id,
+        date_received: shipment.date_received,
+        quantity: shipment.quantity,
+        product_id: shipment.product_id,
+        product_name: shipment.Product?.product_name || "Unknown product",
+        is_new_product: firstReceipt.has(`${shipment.product_id}:${shipment.shipment_id}`),
+      })),
+    });
   } catch (error) {
-    console.error('List shipments error:', error);
-    return res.status(500).json({ message: 'Something went wrong while fetching shipments.' });
+    console.error("List shipments error:", error);
+    res.status(500).json({ message: "Something went wrong while fetching shipments." });
   }
 }
 
-module.exports = { createShipment, createBatchShipment, listShipments };
+module.exports = { createBatchShipment, listShipments };

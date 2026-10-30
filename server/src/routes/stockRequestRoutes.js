@@ -1,4 +1,4 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 
 const {
@@ -8,49 +8,34 @@ const {
   rejectRequest,
   cancelStockRequest,
   confirmReceipt,
-} = require('../controllers/stockRequestController');
+} = require("../controllers/stockRequestController");
 
-const {
-  authenticateToken,
-  authorizeRoles,
-} = require('../middleware/auth');
+const { authenticateToken, authorizeRoles } = require("../middleware/auth");
 
 router.use(authenticateToken);
 
-router.post(
-  '/',
-  authorizeRoles('store_manager'),
-  createStockRequest
-);
+router.post("/", authorizeRoles("store_manager"), createStockRequest);
 
 router.get(
-  '/',
-  authorizeRoles('store_manager', 'warehouse_manager', 'administrator'),
-  listStockRequests
+  "/",
+  authorizeRoles("store_manager", "warehouse_manager", "administrator"),
+  listStockRequests,
 );
 
 router.put(
-  '/:id/approve',
-  authorizeRoles('warehouse_manager'),
-  approveAndDispatch
+  "/:id/approve",
+  authorizeRoles("warehouse_manager"),
+  approveAndDispatch,
 );
 
-router.put(
-  '/:id/reject',
-  authorizeRoles('warehouse_manager'),
-  rejectRequest
-);
+router.put("/:id/reject", authorizeRoles("warehouse_manager"), rejectRequest);
+
+router.put("/:id/cancel", authorizeRoles("store_manager"), cancelStockRequest);
 
 router.put(
-  '/:id/cancel',
-  authorizeRoles('store_manager'),
-  cancelStockRequest
-);
-
-router.put(
-  '/:id/confirm-receipt',
-  authorizeRoles('store_manager'),
-  confirmReceipt
+  "/:id/confirm-receipt",
+  authorizeRoles("store_manager"),
+  confirmReceipt,
 );
 
 module.exports = router;
